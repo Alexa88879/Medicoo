@@ -1,8 +1,5 @@
-
-
-
 import 'package:flutter/material.dart';
-import 'login_page.dart'; // Make sure this file exists in your project
+import 'login_page.dart';
 
 void main() {
   runApp(const MyApp());
@@ -21,8 +18,7 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF219E9E),
         useMaterial3: true,
       ),
-      home: const HomePage(),
+      home: const LoginPage(), // Refers to the class in login_page.dart
     );
   }
 }
-
