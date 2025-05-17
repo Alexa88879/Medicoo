@@ -13,11 +13,11 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white, // Entire page background
+      backgroundColor: Colors.white,
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Top Image
+            // Background Image
             Image.asset(
               'assets/images/logo.png',
               fit: BoxFit.cover,
@@ -111,7 +111,7 @@ class _HomePageState extends State<HomePage> {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () {
-                        // Add forgot password logic here
+                        // Forgot password logic
                       },
                       child: const Text(
                         "Forgot Password?",
@@ -133,7 +133,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                       onPressed: () {
-                        // Add login logic here
+                        // Login logic
                       },
                       child: const Text(
                         "Login",
@@ -147,40 +147,30 @@ class _HomePageState extends State<HomePage> {
                   Center(
                     child: GestureDetector(
                       onTap: () {
-                        // Navigate to Sign Up screen
+                        // TODO: Navigate to Sign Up screen
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Sign Up tapped!")),
+                        );
                       },
                       child: const Text(
                         "Sign Up",
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
-                          color: Color(0xFF006D6D),
-                          decoration: TextDecoration.underline,
+                          color: Color(0xFF006D6D)
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 20),
 
-                  const Row(
-                    children: [
-                      Expanded(child: Divider()),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8.0),
-                        child: Text("OR"),
-                      ),
-                      Expanded(child: Divider()),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-
-                  // Login With Google Button
+                  // Google Login Button
                   SizedBox(
                     width: double.infinity,
                     height: 50,
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        // Add Google login logic
+                        // Google login logic
                       },
                       icon: Image.asset(
                         'assets/images/google.png',
