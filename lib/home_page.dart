@@ -1,16 +1,23 @@
 import 'package:flutter/material.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  bool _obscurePassword = true;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white, // Set full screen background to white
+      backgroundColor: Colors.white, // Entire page background
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Background Image
+            // Top Image
             Image.asset(
               'assets/images/logo.png',
               fit: BoxFit.cover,
@@ -18,7 +25,7 @@ class HomePage extends StatelessWidget {
               height: MediaQuery.of(context).size.height * 0.4,
             ),
 
-            // Login Form
+            // Login Form Section
             Container(
               width: double.infinity,
               decoration: const BoxDecoration(
@@ -48,6 +55,7 @@ class HomePage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
+
                   TextField(
                     decoration: InputDecoration(
                       hintText: "Enter your email address",
@@ -71,12 +79,24 @@ class HomePage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
+
                   TextField(
-                    obscureText: true,
+                    obscureText: _obscurePassword,
                     decoration: InputDecoration(
                       hintText: "Enter your password",
                       prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: const Icon(Icons.visibility_off_outlined),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                      ),
                       filled: true,
                       fillColor: Colors.grey.shade200,
                       border: OutlineInputBorder(
@@ -90,7 +110,9 @@ class HomePage extends StatelessWidget {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        // Add forgot password logic here
+                      },
                       child: const Text(
                         "Forgot Password?",
                         style: TextStyle(color: Color(0xFF006D6D)),
@@ -99,6 +121,7 @@ class HomePage extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
 
+                  // Login Button
                   SizedBox(
                     width: double.infinity,
                     height: 50,
@@ -109,7 +132,9 @@ class HomePage extends StatelessWidget {
                           borderRadius: BorderRadius.circular(25),
                         ),
                       ),
-                      onPressed: () {},
+                      onPressed: () {
+                        // Add login logic here
+                      },
                       child: const Text(
                         "Login",
                         style: TextStyle(fontSize: 18),
@@ -118,13 +143,20 @@ class HomePage extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
 
-                  const Center(
-                    child: Text(
-                      "Sign Up",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF006D6D),
+                  // Clickable Sign Up
+                  Center(
+                    child: GestureDetector(
+                      onTap: () {
+                        // Navigate to Sign Up screen
+                      },
+                      child: const Text(
+                        "Sign Up",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF006D6D),
+                          decoration: TextDecoration.underline,
+                        ),
                       ),
                     ),
                   ),
@@ -142,26 +174,31 @@ class HomePage extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
 
-                  // Centered Login with Google Button
-                  Center(
+                  // Login With Google Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
                     child: OutlinedButton.icon(
-                      onPressed: () {},
+                      onPressed: () {
+                        // Add Google login logic
+                      },
                       icon: Image.asset(
                         'assets/images/google.png',
                         height: 24,
                       ),
-                      label: const Text("Login With Google"),
+                      label: const Text(
+                        "Login With Google",
+                        style: TextStyle(fontSize: 16),
+                      ),
                       style: OutlinedButton.styleFrom(
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(25),
                         ),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 12),
                         side: const BorderSide(color: Colors.black12),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20), // Extra padding to avoid cutoff
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
