@@ -6,11 +6,11 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF219E9E),
+      backgroundColor: Colors.white, // Set full screen background to white
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Background Image as top part of scroll
+            // Background Image
             Image.asset(
               'assets/images/logo.png',
               fit: BoxFit.cover,
@@ -18,7 +18,7 @@ class HomePage extends StatelessWidget {
               height: MediaQuery.of(context).size.height * 0.4,
             ),
 
-            // Login form as part of scroll
+            // Login Form
             Container(
               width: double.infinity,
               decoration: const BoxDecoration(
@@ -142,21 +142,26 @@ class HomePage extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
 
-                  OutlinedButton.icon(
-                    onPressed: () {},
-                    icon: Image.asset(
-                      'assets/images/google.png',
-                      height: 24,
-                    ),
-                    label: const Text("Login With Google"),
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(25),
+                  // Centered Login with Google Button
+                  Center(
+                    child: OutlinedButton.icon(
+                      onPressed: () {},
+                      icon: Image.asset(
+                        'assets/images/google.png',
+                        height: 24,
                       ),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12),
+                      label: const Text("Login With Google"),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 12),
+                        side: const BorderSide(color: Colors.black12),
+                      ),
                     ),
                   ),
+                  const SizedBox(height: 20), // Extra padding to avoid cutoff
                 ],
               ),
             ),
