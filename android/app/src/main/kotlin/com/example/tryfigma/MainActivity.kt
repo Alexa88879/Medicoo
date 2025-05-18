@@ -1,4 +1,4 @@
-package com.example.doctor_2
+package com.example.tryfigma
 
 import io.flutter.embedding.android.FlutterActivity
 

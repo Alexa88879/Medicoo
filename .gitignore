@@ -43,3 +43,129 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Ignore secrets file
+lib/secrets.dart
+.env
+
+
+# Generic
+*.lock
+*.log
+*.DS_Store
+build/
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+Icon?
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub/
+.pub-cache/
+flutter_*.png # Ignoring IntelliJ derived Flutter icons
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+modules.xml
+tasks.xml
+misc.xml
+workspace.xml
+libraries/
+
+# VS Code related
+.vscode/
+launch.json
+settings.json
+
+# Android
+android/app/google-services.json
+android/app/build/
+android/build/
+android/.gradle/
+android/gradle/
+android/app/src/main/assets/flutter_assets/ # Usually good to ignore if `flutter build web` or similar is run often
+android/app/intermediates/
+android/app/outputs/
+android/app/release/
+android/app/*.apk
+android/app/*.aab
+android/app/key.properties # IMPORTANT for sensitive keystore information
+android/local.properties # Contains SDK path, specific to each machine
+
+# iOS & macOS
+ios/Pods/
+ios/DerivedData/
+ios/Flutter/App.framework
+ios/Flutter/engine.ipa
+ios/Flutter/flutter_assets/ # Usually good to ignore if `flutter build ios` or similar is run often
+ios/.symlinks/
+ios/Runner/GeneratedPluginRegistrant.*
+ios/Runner.xcworkspace/contents.xcworkspacedata
+ios/Runner.xcodeproj/project.xcworkspace/xcshareddata/
+ios/Runner.xcodeproj/project.xcworkspace/xcuserdata/
+ios/Runner.xcodeproj/xcuserdata/
+macos/Pods/
+macos/DerivedData/
+macos/Flutter/ephemeral/
+macos/Flutter/FlutterAssembledApp.framework
+macos/Flutter/FlutterEngine.framework
+macos/.symlinks/
+macos/Runner/GeneratedPluginRegistrant.*
+macos/Runner.xcworkspace/contents.xcworkspacedata
+macos/Runner.xcodeproj/project.xcworkspace/xcshareddata/
+macos/Runner.xcodeproj/project.xcworkspace/xcuserdata/
+macos/Runner.xcodeproj/xcuserdata/
+
+# Linux
+linux/flutter/ephemeral/
+linux/CMakeLists.txt.user # QtCreator specific
+# linux/build/ # If you have specific build outputs here
+
+# Windows
+windows/flutter/ephemeral/
+windows/CMakeLists.txt.user # QtCreator specific
+# windows/build/ # If you have specific build outputs here
+windows/runner/Debug/
+windows/runner/Profile/
+windows/runner/Release/
+windows/runner/ipch/
+windows/runner/.vs/
+windows/runner/*.VC.db
+windows/runner/*.VC.VC.opendb
+
+# Web (if you build locally and don't want to commit build artifacts)
+web/build/
+web/.dart_tool/
+
+# Custom files/folders for your project (Review these based on your needs)
+# If version.json is generated or machine-specific, uncomment the next line
+# version.json
+
+# If your ppt/ directory contains very large files or is not essential for all collaborators,
+# you might consider ignoring it, though typically documentation is tracked.
+# ppt/
+
+# If your version_hosting/public/ directory contains build artifacts from another process
+# (e.g., a separate web build for hosting), you might ignore its contents or specific subfolders.
+# Example:
+version_hosting
+# version_hosting/public/flutter_assets/
+
+# Firebase related (google-services.json is usually committed for client apps,
+# but ensure it doesn't contain overly sensitive non-client keys if you have custom setup)
+# No specific Firebase files are typically ignored by default unless they are local credential files
+# not meant for sharing (e.g., service account keys for admin tasks, which should *never* be in client code).
+
+# Sensitive Files (ensure these are never committed)
+secrets.json
+*.pem
+*.key
+credentials.*
+version.json

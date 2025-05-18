@@ -1,4 +1,4 @@
-# doctor_2
+# tryfigma
 
 A new Flutter project.
 

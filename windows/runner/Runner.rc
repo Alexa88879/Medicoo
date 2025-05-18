@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "doctor_2" "\0"
+            VALUE "FileDescription", "tryfigma" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "doctor_2" "\0"
+            VALUE "InternalName", "tryfigma" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "doctor_2.exe" "\0"
-            VALUE "ProductName", "doctor_2" "\0"
+            VALUE "OriginalFilename", "tryfigma.exe" "\0"
+            VALUE "ProductName", "tryfigma" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
