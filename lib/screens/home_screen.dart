@@ -4,11 +4,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:intl/intl.dart';
-import 'login_screen.dart'; // For navigation after logout
 
-// Import placeholder screens (create these files if you haven't)
+import 'login_screen.dart'; // For navigation after logout
+import 'book_appointment_screen.dart'; // For navigating to book appointment
+
+// Import placeholder screens (create these files if you haven't, or remove if not needed yet)
 // import 'qr_scanner_screen.dart';
-// import 'add_appointment_screen.dart';
 // import 'all_appointments_screen.dart';
 // import 'all_prescriptions_screen.dart';
 // import 'profile_screen.dart';
@@ -110,7 +111,7 @@ Widget _buildCompositeAppointmentIcon({
 // Reverted Records icon to simple version
 Widget _buildRecordsIcon({required Color color, double size = 24}) {
   return SvgPicture.asset(
-    'assets/icons/records_icon_1.svg', // Assuming this is the single SVG for records
+    'assets/icons/records_icon_1.svg',
     width: size,
     height: size,
     colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
@@ -148,8 +149,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _fetchLatestPrescription();
       _fetchUpcomingAppointments();
     } else {
-      // If somehow HomeScreen is reached without a user, navigate to login
-      // This is a safeguard, main.dart's StreamBuilder should handle the primary redirection
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
@@ -240,7 +239,7 @@ class _HomeScreenState extends State<HomeScreen> {
           .where('patientUid', isEqualTo: _currentUser!.uid)
           .where('dateTime', isGreaterThanOrEqualTo: Timestamp.now())
           .orderBy('dateTime', descending: false)
-          .limit(2)
+          .limit(2) // Show a couple on the home screen
           .get();
       if (mounted) {
         setState(() {
@@ -260,8 +259,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _logoutUser() async {
     try {
-      await _googleSignIn.signOut(); // Sign out from Google
-      await _auth.signOut(); // Sign out from Firebase
+      await _googleSignIn.signOut();
+      await _auth.signOut();
 
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
@@ -280,9 +279,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onItemTapped(int index) {
-    if (index == 2) {
+    if (index == 2) { // Index 2 is the QR scanner
       _scanQrCode();
-      return;
+      return; // Don't change selected index for scan button if it's a direct action
     }
     if (mounted) {
       setState(() {
@@ -290,30 +289,35 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
     debugPrint('Tapped on item with index: $index');
-    // TODO: Implement navigation based on index for other tabs
-    // if (index == 1 && mounted) Navigator.push(context, MaterialPageRoute(builder: (context) => RecordsScreen()));
-    // if (index == 3 && mounted) Navigator.push(context, MaterialPageRoute(builder: (context) => NearbyScreen()));
-    // if (index == 4 && mounted) Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileScreen(userData: _userData)));
+    // TODO: Implement navigation based on index for other tabs like Records, Nearby, Profile
+    // For example:
+    // if (index == 1) {
+    //   Navigator.push(context, MaterialPageRoute(builder: (context) => const RecordsScreen()));
+    // } else if (index == 4) {
+    //   Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileScreen(userData: _userData)));
+    // }
   }
 
   void _scanQrCode() {
     // TODO: Navigate to QrScannerScreen and handle result
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('QR Code Scanner Tapped! (Not Implemented)')),
+        const SnackBar(content: Text('QR Code Scanner Tapped! (Not Implemented Yet)')),
       );
     }
     debugPrint('Bottom Nav QR Code Scanner Tapped!');
   }
 
   void _addNewAppointmentAction() {
-    // TODO: Navigate to AddAppointmentScreen
+    // TODO: Navigate to a dedicated AddAppointmentScreen if different from BookAppointmentScreen
+    // For now, let's assume it also goes to BookAppointmentScreen or a similar flow
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add New Appointment Tapped! (Not Implemented)')),
+       Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const BookAppointmentScreen()),
       );
     }
-    debugPrint('Add New Appointment Icon Tapped - Implement action');
+    debugPrint('Add New Appointment Icon Tapped');
   }
 
 
@@ -391,7 +395,7 @@ class _HomeScreenState extends State<HomeScreen> {
             delegate: SliverChildListDelegate(
               [
                 _isLoadingUserData
-                    ? const Center(child: Padding(padding: EdgeInsets.all(20.0), child: CircularProgressIndicator()))
+                    ? const Center(child: Padding(padding: EdgeInsets.all(20.0), child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080)))))
                     : _buildPatientInfoCard(_userData),
                 _buildActionButtonsGrid(),
                 _buildPrescriptionSection(),
@@ -551,11 +555,11 @@ class _HomeScreenState extends State<HomeScreen> {
             iconPath: 'assets/icons/medical_icon.svg',
             label: 'Book\nAppointment',
             onTap: () {
-              // TODO: Navigate to BookAppointmentScreen
-              if(mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Book Appointment (Not Implemented)')));
-              debugPrint('Book Appointment Tapped');
+              if (mounted) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const BookAppointmentScreen()),
+                );
               }
             },
           ),
@@ -564,12 +568,11 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Book\nLab test',
             onTap: () {
               // TODO: Navigate to BookLabTestScreen
-              if(mounted){
-
-               ScaffoldMessenger.of(context).showSnackBar(
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Book Lab Test (Not Implemented)')));
-              debugPrint('Book Lab Test Tapped');
               }
+              debugPrint('Book Lab Test Tapped');
             },
           ),
           _actionButton(
@@ -577,11 +580,11 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Order\nMedicine',
             onTap: () {
               // TODO: Navigate to OrderMedicineScreen
-               if(mounted) {
-                 ScaffoldMessenger.of(context).showSnackBar(
-                   const SnackBar(content: Text('Order Medicine (Not Implemented)'))
-                 );
-               }
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Order Medicine (Not Implemented)'))
+                );
+              }
               debugPrint('Order Medicine Tapped');
             },
           ),
@@ -590,11 +593,11 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Video\nConsultation',
             onTap: () {
               // TODO: Navigate to VideoConsultationScreen
-               if(mounted) {
-                 ScaffoldMessenger.of(context).showSnackBar(
-                   const SnackBar(content: Text('Video Consultation (Not Implemented)'))
-                 );
-               }
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Video Consultation (Not Implemented)'))
+                );
+              }
               debugPrint('Video Consultation Tapped');
             },
           ),
@@ -690,7 +693,7 @@ class _HomeScreenState extends State<HomeScreen> {
           childrenPadding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 16.0, top: 8.0),
           children: <Widget>[
             _isLoadingPrescription
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080))))
               : Text(prescriptionDetails, style: TextStyle(color: Colors.grey[700], fontSize: 14)),
             const SizedBox(height: 10),
             Align(
@@ -724,7 +727,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const Text('Appointments', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Color(0xFF00695C))),
               InkWell(
-                onTap: _addNewAppointmentAction,
+                onTap: _addNewAppointmentAction, // This now navigates to BookAppointmentScreen
                 customBorder: const CircleBorder(),
                 child: Tooltip(
                   message: 'Add New Appointment',
@@ -737,7 +740,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 12),
           _isLoadingAppointments
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080))))
               : _upcomingAppointments.isEmpty
                   ? const Padding(
                       padding: EdgeInsets.symmetric(vertical: 16.0),
