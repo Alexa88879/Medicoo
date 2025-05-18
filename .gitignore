@@ -169,3 +169,4 @@ secrets.json
 *.key
 credentials.*
 version.json
+firebase_options.dart
