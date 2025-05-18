@@ -1,0 +1,148 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      // Ensure request.auth is not null before accessing request.auth.uid
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function userHasRole(userId, roleName) {
+      let userDocPath = /databases/$(database)/documents/users/$(userId);
+      // This function relies on /users/{userId} being readable by the current context
+      return isAuthenticated() && // Added isAuthenticated() check here too for safety
+             exists(userDocPath) &&
+             get(userDocPath).data.role == roleName;
+    }
+
+    function isDoctorActive(doctorId) {
+      let doctorUserDocPath = /databases/$(database)/documents/users/$(doctorId);
+      // This function relies on /users/{userId} read rules allowing this get()
+      return exists(doctorUserDocPath) &&
+             get(doctorUserDocPath).data.role == 'doctor' &&
+             get(doctorUserDocPath).data.isActive == true;
+    }
+
+    // ====== USERS Collection (Core User Info) ======
+    match /users/{userId} {
+      // READ: Any authenticated user can read core user data of doctors for selection,
+      // and users can read their own core data.
+      allow read: if isAuthenticated() &&
+                    (isOwner(userId) ||
+                     (exists(/databases/$(database)/documents/users/$(userId)) &&
+                      get(/databases/$(database)/documents/users/$(userId)).data.role == 'doctor'
+                     )
+                    );
+
+      // CREATE: User can create THEIR OWN user document.
+      // Validates essential fields that should come from Auth token or client on signup.
+      allow create: if isAuthenticated() &&
+                      isOwner(userId) && // Document ID must be the user's UID
+                      request.resource.data.uid == request.auth.uid &&
+                      request.resource.data.email == request.auth.token.email &&
+                      request.resource.data.containsKey('role') && // Client must send 'role'
+                      request.resource.data.containsKey('displayName') &&
+                      request.resource.data.containsKey('createdAt') &&
+                      request.resource.data.createdAt == request.time; // Use server timestamp
+
+      // UPDATE: User can update THEIR OWN user document's allowed fields.
+      allow update: if isAuthenticated() && isOwner(userId) &&
+                      request.resource.data.uid == resource.data.uid &&
+                      request.resource.data.email == resource.data.email &&
+                      request.resource.data.role == resource.data.role &&
+                      (
+                        (resource.data.role == 'patient' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName'])) ||
+                        (resource.data.role == 'doctor' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'isActive', 'specialization']))
+                      );
+      allow delete: if false;
+    }
+
+    // ====== PATIENT Collection (Detailed Patient Profiles) ======
+    match /patient/{userId} { // Document ID {userId} here MUST match the UID in /users/{userId}
+      // READ: User can read THEIR OWN patient profile.
+      allow read: if isAuthenticated() && isOwner(userId);
+
+      // CREATE: User can create THEIR OWN patient profile document.
+      // The isOwner check is the primary guard.
+      // The existence of the /users/{userId} doc is ensured by app logic (batch write).
+      // The role check (userHasRole(userId, 'patient')) is removed because it would fail in a batch write.
+      allow create: if isAuthenticated() &&
+                      isOwner(userId) &&
+                      // Basic validation for data sent to this 'patient' collection document
+                      request.resource.data.containsKey('fullName') &&
+                      request.resource.data.containsKey('patientId');
+
+      // UPDATE: User can update THEIR OWN patient profile.
+      allow update: if isAuthenticated() && isOwner(userId) &&
+                      // Ensure patientId, if set, is not changed by the user after initial creation.
+                      (request.resource.data.patientId == resource.data.patientId || !resource.data.containsKey('patientId') || resource.data.patientId == null) &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+                        ['fullName', 'age', 'bloodGroup', 'phoneNumber', 'profilePictureUrl'
+                         // patientId should only be set on create or be immutable if already set
+                        ]
+                      );
+      allow delete: if false;
+    }
+
+    // ====== APPOINTMENTS Collection ======
+    match /appointments/{appointmentId} {
+      allow read: if isAuthenticated() &&
+                    (isOwner(resource.data.patientUid) || isOwner(resource.data.doctorId));
+
+      allow create: if isAuthenticated() &&
+                      request.resource.data.patientUid == request.auth.uid &&
+                      isDoctorActive(request.resource.data.doctorId) &&
+                      request.resource.data.dateTime > request.time &&
+                      request.resource.data.status == 'scheduled' &&
+                      request.resource.data.createdAt == request.time &&
+                      request.resource.data.containsKey('patientName') &&
+                      request.resource.data.containsKey('doctorName') &&
+                      request.resource.data.containsKey('doctorSpecialization') &&
+                      request.resource.data.containsKey('timeSlot') &&
+                      request.resource.data.appointmentType == 'consultation';
+
+      allow update: if isAuthenticated() &&
+                      (
+                        (isOwner(resource.data.patientUid) &&
+                         request.resource.data.status == 'cancelled_by_patient' &&
+                         resource.data.dateTime > request.time &&
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancellationReason'])
+                        ) ||
+                        (isOwner(resource.data.doctorId) &&
+                         (request.resource.data.status == 'confirmed' ||
+                          request.resource.data.status == 'completed' ||
+                          request.resource.data.status == 'cancelled_by_doctor') &&
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+                        )
+                      ) &&
+                      request.resource.data.patientUid == resource.data.patientUid &&
+                      request.resource.data.doctorId == resource.data.doctorId &&
+                      request.resource.data.dateTime == resource.data.dateTime &&
+                      request.resource.data.createdAt == resource.data.createdAt &&
+                      request.resource.data.appointmentType == resource.data.appointmentType;
+
+      allow delete: if false;
+    }
+
+    // ====== PRESCRIPTIONS Collection ======
+    match /prescriptions/{prescriptionId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.patientUid) || userHasRole(request.auth.uid, 'doctor'));
+
+      allow create: if isAuthenticated() &&
+                       userHasRole(request.auth.uid, 'doctor') &&
+                       request.resource.data.doctorId == request.auth.uid &&
+                       request.resource.data.containsKey('patientUid') &&
+                       request.resource.data.containsKey('doctorName') &&
+                       request.resource.data.containsKey('dateIssued') &&
+                       request.resource.data.containsKey('medications');
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}

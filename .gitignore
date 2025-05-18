@@ -170,3 +170,4 @@ secrets.json
 credentials.*
 version.json
 firebase_options.dart
+rules.js

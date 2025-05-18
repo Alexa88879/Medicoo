@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
-import 'package:google_sign_in/google_sign_in.dart'; // Import GoogleSignIn
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore for Google Sign-In new user check
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'signup_screen.dart';
-import 'home_screen.dart'; // Ensure HomeScreen is imported
+import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -20,7 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
-  bool _isLoading = false; // For loading indicators
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -31,14 +31,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _loginUser() async {
     if (_emailController.text.trim().isEmpty || _passwordController.text.trim().isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter both email and password.')),
       );
       return;
     }
-    setState(() {
-      _isLoading = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
@@ -86,18 +89,20 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _signInWithGoogle() async {
-    setState(() {
-      _isLoading = true;
-    });
+    if(mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+
     try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null && mounted) {
-        // The user canceled the sign-in
-        setState(() => _isLoading = false);
-        return;
+      if (googleUser == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return; // User cancelled sign-in
       }
 
-      final GoogleSignInAuthentication googleAuth = await googleUser!.authentication;
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
       final AuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
@@ -107,27 +112,49 @@ class _LoginScreenState extends State<LoginScreen> {
       User? user = userCredential.user;
 
       if (user != null) {
-        // Check if this is a new Google user or existing
         final userDocRef = _firestore.collection('users').doc(user.uid);
-        final userDoc = await userDocRef.get();
+        // Reference to the new 'patient' collection for detailed profile
+        final patientProfileDocRef = _firestore.collection('patient').doc(user.uid); // <<--- CHANGED COLLECTION NAME
 
-        if (!userDoc.exists) {
-          // New user, store their info in Firestore
-          String patientId = 'PATG${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-          await userDocRef.set({
+        final userDocSnapshot = await userDocRef.get();
+
+        // Use a batch for atomic writes if creating both documents
+        WriteBatch batch = _firestore.batch();
+
+        if (!userDocSnapshot.exists) {
+          // New user via Google Sign-In
+          String patientIdGenerated = 'PATG${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+          String googleDisplayName = user.displayName ?? 'Google User';
+
+          // 1. Create main user document in 'users' collection
+          batch.set(userDocRef, {
             'uid': user.uid,
-            'fullName': user.displayName ?? 'Google User',
-            'displayName': user.displayName ?? 'Google User',
             'email': user.email,
             'role': 'patient', // Default role
             'createdAt': Timestamp.now(),
+            'displayName': googleDisplayName, // For quick app bar display
+            // 'isActive': true, // Default for new patients
+          });
+
+          // 2. Create profile document in 'patient' collection
+          batch.set(patientProfileDocRef, { // <<--- CHANGED COLLECTION NAME
+            // 'uid': user.uid, // Optional: if you want to duplicate
+            // 'email': user.email, // Optional: if you want to duplicate
+            'fullName': googleDisplayName,
+            'patientId': patientIdGenerated,
             'profilePictureUrl': user.photoURL,
-            'patientId': patientId,
+            'phoneNumber': user.phoneNumber, // Might be null
             'age': null,
             'bloodGroup': null,
-            'phoneNumber': user.phoneNumber, // May or may not be available
+            // 'role': 'patient', // Role is primarily in 'users' collection
+            // 'createdAt': Timestamp.now(), // Profile specific creation time if needed
           });
+
+          await batch.commit(); // Commit both writes
         }
+        // If userDocSnapshot exists, we assume their profile in 'patient' also exists
+        // or would be created/updated through a profile editing screen.
+
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -138,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to sign in with Google: ${e.toString().split(']').last}')), // More concise error
+          SnackBar(content: Text('Failed to sign in with Google: ${e.toString().split(']').last}')),
         );
       }
       debugPrint('Google Sign-In Error: $e');
@@ -153,14 +180,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _forgotPassword() async {
     if (_emailController.text.trim().isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter your email address to reset password.')),
       );
       return;
     }
-    setState(() {
-      _isLoading = true; // Can use the same loading state or a specific one
-    });
+     if (mounted) {
+        setState(() {
+        _isLoading = true;
+      });
+     }
     try {
       await _auth.sendPasswordResetEmail(email: _emailController.text.trim());
       if (mounted) {
@@ -191,7 +221,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
@@ -200,13 +229,12 @@ class _LoginScreenState extends State<LoginScreen> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
-            // physics: const NeverScrollableScrollPhysics(), // Allow scrolling if content overflows
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight( // Ensures column children take up full height if possible
+              child: IntrinsicHeight(
                 child: Stack(
                   children: [
-                    Container( // Background Image/Color (existing code)
+                    Container(
                       height: screenHeight * 0.35,
                       width: double.infinity,
                       decoration: const BoxDecoration(
@@ -218,9 +246,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
-                    Container( // Login Form Area
-                      margin: EdgeInsets.only(top: screenHeight * 0.30), // Adjusted margin
-                      padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20), // Adjusted padding
+                    Container(
+                      margin: EdgeInsets.only(top: screenHeight * 0.30),
+                      padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
                       decoration: const BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.only(
@@ -229,13 +257,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center, // Center content vertically
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Text(
                             'Login',
                             style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Color(0xFF008080), fontFamily: 'Inter'),
                           ),
-                          const SizedBox(height: 20), // Increased spacing
+                          const SizedBox(height: 20),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -276,7 +304,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               Align(
                                 alignment: Alignment.centerRight,
                                 child: TextButton(
-                                  onPressed: _isLoading ? null : _forgotPassword, // Call forgot password
+                                  onPressed: _isLoading ? null : _forgotPassword,
                                   child: const Text('Forgot Password?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF008080), fontFamily: 'Inter')),
                                 ),
                               ),
@@ -285,15 +313,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                 width: double.infinity,
                                 height: 50,
                                 child: ElevatedButton(
-                                  onPressed: _isLoading ? null : _loginUser, // Call login user
+                                  onPressed: _isLoading ? null : _loginUser,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF008080),
+                                    foregroundColor: Colors.white,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
                                     padding: const EdgeInsets.symmetric(vertical: 12),
                                   ),
-                                  child: _isLoading && ModalRoute.of(context)?.isCurrent == true // Check if this button triggered loading
+                                  child: _isLoading
                                       ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3,))
-                                      : const Text('Login', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white, fontFamily: 'Inter')),
+                                      : const Text('Login', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
                                 ),
                               ),
                               const SizedBox(height: 15),
@@ -307,8 +336,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               const SizedBox(height: 15),
                               SocialLoginButton(
                                 text: 'Login With Google',
-                                onPressed: _isLoading ? () {} : _signInWithGoogle, // Call Google sign-in
-                                icon: 'assets/icons/google.svg', // Make sure this asset exists
+                                onPressed: _isLoading ? () {} : _signInWithGoogle,
+                                icon: 'assets/icons/google.svg',
                               ),
                               const SizedBox(height: 15),
                               Row(
@@ -323,7 +352,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ],
                               ),
-                               const SizedBox(height: 20), // Ensure some space at the bottom for scrolling
+                               const SizedBox(height: 20),
                             ],
                           ),
                         ],
@@ -367,9 +396,9 @@ class SocialLoginButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SvgPicture.asset(icon, height: 24), // Ensure this asset exists
+            SvgPicture.asset(icon, height: 24),
             const SizedBox(width: 10),
-            Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.black54, fontFamily: 'Inter')), // Slightly bolder text
+            Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.black54, fontFamily: 'Inter')),
           ],
         ),
       ),

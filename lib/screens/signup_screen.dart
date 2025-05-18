@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
-import 'home_screen.dart';
+import 'home_screen.dart'; // Ensure HomeScreen is imported
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -11,8 +11,8 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
-  final _auth = FirebaseAuth.instance; // Firebase Auth instance
-  final _firestore = FirebaseFirestore.instance; // Firestore instance
+  final _auth = FirebaseAuth.instance;
+  final _firestore = FirebaseFirestore.instance;
 
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -20,7 +20,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  bool _isLoading = false; // To show loading indicator on button
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -32,38 +32,47 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Future<void> _signUpUser() async {
+    // --- (Input validation remains the same) ---
     if (_nameController.text.trim().isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter your full name.')),
       );
       return;
     }
     if (_emailController.text.trim().isEmpty) {
+       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter your email address.')),
       );
       return;
     }
     if (_passwordController.text.trim().isEmpty) {
+       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a password.')),
       );
       return;
     }
-    if (_passwordController.text.trim() != _confirmPasswordController.text.trim()) {
+    if (_passwordController.text.trim() !=
+        _confirmPasswordController.text.trim()) {
+           if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Passwords do not match!')),
       );
       return;
     }
+    // --- End of input validation ---
 
-    setState(() {
-      _isLoading = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
-      // Create user with email and password
-      UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+      UserCredential userCredential =
+          await _auth.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
@@ -71,26 +80,43 @@ class _SignUpScreenState extends State<SignUpScreen> {
       User? newUser = userCredential.user;
 
       if (newUser != null) {
-        // Generate a simple patient ID (you might want a more robust system)
-        String patientId = 'PAT${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+        String patientIdGenerated =
+            'PATG${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+        String nameInput = _nameController.text.trim();
 
-        // Store additional user information in Firestore
-        await _firestore.collection('users').doc(newUser.uid).set({
+        // Write to Firebase in a batch for atomicity (optional but good practice)
+        WriteBatch batch = _firestore.batch();
+
+        // 1. Create the main user document in 'users' collection
+        DocumentReference userDocRef =
+            _firestore.collection('users').doc(newUser.uid);
+        batch.set(userDocRef, {
           'uid': newUser.uid,
-          'fullName': _nameController.text.trim(),
-          'displayName': _nameController.text.trim(), // Initially same as full name
           'email': newUser.email,
-          'role': 'patient', // Default role for app sign-ups
+          'role': 'patient',
           'createdAt': Timestamp.now(),
-          'patientId': patientId,
-          // Initialize other fields as needed, possibly null or default values
-          'age': null,
-          'bloodGroup': null,
-          'profilePictureUrl': null,
-          'phoneNumber': null,
+          'displayName': nameInput, // Storing displayName here for quick access
         });
 
-        if (mounted) { // Check if the widget is still in the tree
+        // 2. Create the detailed profile in 'patient' collection
+        DocumentReference userProfileDocRef =
+            _firestore.collection('patient').doc(newUser.uid); // Use same UID
+        batch.set(userProfileDocRef, {
+          // 'uid': newUser.uid, // Optional: if you want to duplicate uid inside profile
+          // 'email': newUser.email, // Optional: if you want to duplicate email
+          'fullName': nameInput,
+          'patientId': patientIdGenerated,
+          'age': null,
+          'bloodGroup': null,
+          'phoneNumber': null,
+          'profilePictureUrl': null,
+          // 'role': 'patient', // Role is primarily in the 'users' collection
+          // 'createdAt': Timestamp.now(), // Can have its own createdAt or share parent's
+        });
+
+        await batch.commit(); // Commit both writes together
+
+        if (mounted) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const HomeScreen()),
@@ -115,7 +141,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Something went wrong. Please try again.')),
+          const SnackBar(
+              content: Text('Something went wrong. Please try again.')),
         );
       }
       debugPrint('Sign Up Error: $e');
@@ -138,7 +165,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         builder: (context, constraints) {
           return Stack(
             children: [
-              // U-shaped background (existing code)
               Positioned(
                 top: 0,
                 left: 0,
@@ -161,7 +187,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                 ),
               ),
-              // Center image with circular background (existing code)
               Positioned(
                 top: screenHeight * 0.05,
                 left: 0,
@@ -169,7 +194,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 child: Center(
                   child: Container(
                     width: screenWidth * 0.330,
-                    height: screenWidth * 0.40, // Should be same as width for circle
+                    height: screenWidth *
+                        0.40, 
                     decoration: const BoxDecoration(
                       color: Colors.white,
                       shape: BoxShape.circle,
@@ -182,9 +208,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                 ),
               ),
-              // Scrollable sign up form
               Positioned(
-                top: screenHeight * 0.30, // Adjusted to give more space for form
+                top: screenHeight * 0.30,
                 left: 0,
                 right: 0,
                 bottom: 0,
@@ -222,32 +247,54 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             letterSpacing: 0.5,
                           ),
                         ),
-                        const SizedBox(height: 25), // Increased spacing
-                        // Full Name TextField (existing code)
+                        const SizedBox(height: 25),
                         const Align(
                           alignment: Alignment.centerLeft,
                           child: Padding(
                             padding: EdgeInsets.only(left: 16.0, bottom: 8.0),
-                            child: Text('Full Name', style: TextStyle(color: Color(0xFF008080), fontSize: 16, fontWeight: FontWeight.w500, fontFamily: 'Inter')),
+                            child: Text('Full Name',
+                                style: TextStyle(
+                                    color: Color(0xFF008080),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                    fontFamily: 'Inter')),
                           ),
                         ),
                         TextField(
                           controller: _nameController,
                           decoration: InputDecoration(
                             hintText: 'Enter your full name',
-                            hintStyle: const TextStyle(color: Color(0xFF757575), fontSize: 15, fontWeight: FontWeight.w400, letterSpacing: 0.2),
+                            hintStyle: const TextStyle(
+                                color: Color(0xFF757575),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w400,
+                                letterSpacing: 0.2),
                             prefixIcon: const Icon(Icons.person_outline),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: const BorderSide(color: Colors.black26)),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: const BorderSide(color: Colors.black26)),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide:
+                                    const BorderSide(color: Colors.black26)),
+                            enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide:
+                                    const BorderSide(color: Colors.black26)),
+                             focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide: const BorderSide(color: Color(0xFF008080), width: 2.0)
+                              ),
                           ),
                         ),
                         const SizedBox(height: 15),
-                        // Email Address TextField (existing code)
                         const Align(
                           alignment: Alignment.centerLeft,
                           child: Padding(
                             padding: EdgeInsets.only(left: 16.0, bottom: 8.0),
-                            child: Text('Email Address', style: TextStyle(color: Color(0xFF008080), fontSize: 16, fontWeight: FontWeight.w500, fontFamily: 'Inter')),
+                            child: Text('Email Address',
+                                style: TextStyle(
+                                    color: Color(0xFF008080),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                    fontFamily: 'Inter')),
                           ),
                         ),
                         TextField(
@@ -255,19 +302,37 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
                             hintText: 'Enter your email address',
-                            hintStyle: const TextStyle(color: Color(0xFF757575), fontSize: 15, fontWeight: FontWeight.w400, letterSpacing: 0.2),
+                            hintStyle: const TextStyle(
+                                color: Color(0xFF757575),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w400,
+                                letterSpacing: 0.2),
                             prefixIcon: const Icon(Icons.email_outlined),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: const BorderSide(color: Colors.black26)),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: const BorderSide(color: Colors.black26)),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide:
+                                    const BorderSide(color: Colors.black26)),
+                            enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide:
+                                    const BorderSide(color: Colors.black26)),
+                             focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide: const BorderSide(color: Color(0xFF008080), width: 2.0)
+                              ),
                           ),
                         ),
                         const SizedBox(height: 15),
-                        // Create Password TextField (existing code)
-                         const Align(
+                        const Align(
                           alignment: Alignment.centerLeft,
                           child: Padding(
                             padding: EdgeInsets.only(left: 16.0, bottom: 8.0),
-                            child: Text('Create Password', style: TextStyle(color: Color(0xFF008080), fontSize: 16, fontWeight: FontWeight.w500, fontFamily: 'Inter')),
+                            child: Text('Create Password',
+                                style: TextStyle(
+                                    color: Color(0xFF008080),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                    fontFamily: 'Inter')),
                           ),
                         ),
                         TextField(
@@ -275,20 +340,47 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           obscureText: _obscurePassword,
                           decoration: InputDecoration(
                             hintText: 'Enter your password',
-                            hintStyle: const TextStyle(color: Color(0xFF757575), fontSize: 15, fontWeight: FontWeight.w400, letterSpacing: 0.2),
+                            hintStyle: const TextStyle(
+                                color: Color(0xFF757575),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w400,
+                                letterSpacing: 0.2),
                             prefixIcon: const Icon(Icons.lock_outline),
-                            suffixIcon: IconButton(icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined), onPressed: () {setState(() {_obscurePassword = !_obscurePassword;});},),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: const BorderSide(color: Colors.black26)),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: const BorderSide(color: Colors.black26)),
+                            suffixIcon: IconButton(
+                              icon: Icon(_obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined),
+                              onPressed: () {
+                                setState(() {
+                                  _obscurePassword = !_obscurePassword;
+                                });
+                              },
+                            ),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide:
+                                    const BorderSide(color: Colors.black26)),
+                            enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide:
+                                    const BorderSide(color: Colors.black26)),
+                             focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide: const BorderSide(color: Color(0xFF008080), width: 2.0)
+                              ),
                           ),
                         ),
                         const SizedBox(height: 15),
-                        // Confirm Password TextField (existing code)
                         const Align(
                           alignment: Alignment.centerLeft,
                           child: Padding(
                             padding: EdgeInsets.only(left: 16.0, bottom: 8.0),
-                            child: Text('Confirm Password', style: TextStyle(color: Color(0xFF008080), fontSize: 16, fontWeight: FontWeight.w500, fontFamily: 'Inter')),
+                            child: Text('Confirm Password',
+                                style: TextStyle(
+                                    color: Color(0xFF008080),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                    fontFamily: 'Inter')),
                           ),
                         ),
                         TextField(
@@ -296,29 +388,57 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           obscureText: _obscureConfirmPassword,
                           decoration: InputDecoration(
                             hintText: 'Confirm your password',
-                            hintStyle: const TextStyle(color: Color(0xFF757575), fontSize: 15, fontWeight: FontWeight.w400, letterSpacing: 0.2),
+                            hintStyle: const TextStyle(
+                                color: Color(0xFF757575),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w400,
+                                letterSpacing: 0.2),
                             prefixIcon: const Icon(Icons.lock_outline),
-                            suffixIcon: IconButton(icon: Icon(_obscureConfirmPassword ? Icons.visibility_outlined : Icons.visibility_off_outlined), onPressed: () {setState(() {_obscureConfirmPassword = !_obscureConfirmPassword;});},),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: const BorderSide(color: Colors.black26)),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: const BorderSide(color: Colors.black26)),
+                            suffixIcon: IconButton(
+                              icon: Icon(_obscureConfirmPassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined),
+                              onPressed: () {
+                                setState(() {
+                                  _obscureConfirmPassword =
+                                      !_obscureConfirmPassword;
+                                });
+                              },
+                            ),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide:
+                                    const BorderSide(color: Colors.black26)),
+                            enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide:
+                                    const BorderSide(color: Colors.black26)),
+                            focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide: const BorderSide(color: Color(0xFF008080), width: 2.0)
+                              ),
                           ),
                         ),
-                        const SizedBox(height: 30), // Increased spacing
+                        const SizedBox(height: 30),
                         Padding(
-                          padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.02),
+                          padding: EdgeInsets.symmetric(
+                              horizontal: screenWidth * 0.02),
                           child: SizedBox(
                             width: double.infinity,
                             height: 55,
                             child: ElevatedButton(
-                              onPressed: _isLoading ? null : _signUpUser, // Updated onPressed
+                              onPressed: _isLoading ? null : _signUpUser,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF008080),
+                                foregroundColor: Colors.white,
                                 elevation: 2,
-                                shadowColor: const Color(0xFF008080).withAlpha(128),
+                                shadowColor:
+                                    const Color(0xFF008080).withAlpha(128),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(28),
                                 ),
-                                padding: const EdgeInsets.symmetric(vertical: 15),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 15),
                               ),
                               child: _isLoading
                                   ? const SizedBox(
@@ -331,7 +451,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                     )
                                   : const Text(
                                       'Sign Up',
-                                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white, fontFamily: 'Inter', letterSpacing: 0.5),
+                                      style: TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w600,
+                                          fontFamily: 'Inter',
+                                          letterSpacing: 0.5),
                                     ),
                             ),
                           ),
@@ -340,10 +464,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Text('Already have an account? ', style: TextStyle(fontSize: 16, color: Colors.black54, fontFamily: 'Inter')),
+                            const Text('Already have an account? ',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.black54,
+                                    fontFamily: 'Inter')),
                             TextButton(
-                              onPressed: _isLoading ? null : () {Navigator.pop(context);},
-                              child: const Text('Login', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF008080), fontFamily: 'Inter')),
+                              onPressed: _isLoading
+                                  ? null
+                                  : () {
+                                      Navigator.pop(context);
+                                    },
+                              child: const Text('Login',
+                                  style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF008080),
+                                      fontFamily: 'Inter')),
                             ),
                           ],
                         ),
