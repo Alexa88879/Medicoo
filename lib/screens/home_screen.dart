@@ -1,5 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:intl/intl.dart';
+import 'login_screen.dart'; // For navigation after logout
+
+// Import placeholder screens (create these files if you haven't)
+// import 'qr_scanner_screen.dart';
+// import 'add_appointment_screen.dart';
+// import 'all_appointments_screen.dart';
+// import 'all_prescriptions_screen.dart';
+// import 'profile_screen.dart';
+// import 'records_screen.dart';
+// import 'nearby_screen.dart';
 
 // Helper widget for the composite profile icon
 Widget _buildCompositeProfileIcon({
@@ -113,34 +127,201 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+  User? _currentUser;
+  Map<String, dynamic>? _userData;
+  DocumentSnapshot? _latestPrescription;
+  List<DocumentSnapshot> _upcomingAppointments = [];
+
+  bool _isLoadingUserData = true;
+  bool _isLoadingPrescription = true;
+  bool _isLoadingAppointments = true;
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+
+  @override
+  void initState() {
+    super.initState();
+    _currentUser = _auth.currentUser;
+    if (_currentUser != null) {
+      _fetchUserData();
+      _fetchLatestPrescription();
+      _fetchUpcomingAppointments();
+    } else {
+      // If somehow HomeScreen is reached without a user, navigate to login
+      // This is a safeguard, main.dart's StreamBuilder should handle the primary redirection
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const LoginScreen()),
+            (Route<dynamic> route) => false,
+          );
+        }
+      });
+      if (mounted) {
+         setState(() {
+            _isLoadingUserData = false;
+            _isLoadingPrescription = false;
+            _isLoadingAppointments = false;
+         });
+      }
+    }
+  }
+
+  Future<void> _fetchUserData() async {
+    if (_currentUser == null) {
+      if (mounted) setState(() => _isLoadingUserData = false);
+      return;
+    }
+    try {
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .get();
+      if (mounted) {
+        setState(() {
+          if (userDoc.exists) {
+            _userData = userDoc.data() as Map<String, dynamic>?;
+          }
+          _isLoadingUserData = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingUserData = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load user data.')),
+        );
+      }
+      debugPrint("Error fetching user data: $e");
+    }
+  }
+
+  Future<void> _fetchLatestPrescription() async {
+    if (_currentUser == null) {
+       if (mounted) setState(() => _isLoadingPrescription = false);
+      return;
+    }
+    try {
+      QuerySnapshot snapshot = await FirebaseFirestore.instance
+          .collection('prescriptions')
+          .where('patientUid', isEqualTo: _currentUser!.uid)
+          .orderBy('dateIssued', descending: true)
+          .limit(1)
+          .get();
+      if (mounted) {
+        setState(() {
+          if (snapshot.docs.isNotEmpty) {
+            _latestPrescription = snapshot.docs.first;
+          }
+          _isLoadingPrescription = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingPrescription = false;
+        });
+      }
+      debugPrint("Error fetching prescription: $e");
+    }
+  }
+
+  Future<void> _fetchUpcomingAppointments() async {
+    if (_currentUser == null) {
+      if (mounted) setState(() => _isLoadingAppointments = false);
+      return;
+    }
+    try {
+      QuerySnapshot snapshot = await FirebaseFirestore.instance
+          .collection('appointments')
+          .where('patientUid', isEqualTo: _currentUser!.uid)
+          .where('dateTime', isGreaterThanOrEqualTo: Timestamp.now())
+          .orderBy('dateTime', descending: false)
+          .limit(2)
+          .get();
+      if (mounted) {
+        setState(() {
+          _upcomingAppointments = snapshot.docs;
+          _isLoadingAppointments = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingAppointments = false;
+        });
+      }
+      debugPrint("Error fetching appointments: $e");
+    }
+  }
+
+  Future<void> _logoutUser() async {
+    try {
+      await _googleSignIn.signOut(); // Sign out from Google
+      await _auth.signOut(); // Sign out from Firebase
+
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (Route<dynamic> route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error logging out: ${e.toString()}')),
+        );
+      }
+      debugPrint("Logout error: $e");
+    }
+  }
 
   void _onItemTapped(int index) {
-    if (index != 2) { // Index 2 is the QR scanner
+    if (index == 2) {
+      _scanQrCode();
+      return;
+    }
+    if (mounted) {
       setState(() {
         _selectedIndex = index;
       });
     }
-    debugPrint('Tapped on item with index: $index'); // Using Flutter's built-in logging
+    debugPrint('Tapped on item with index: $index');
+    // TODO: Implement navigation based on index for other tabs
+    // if (index == 1 && mounted) Navigator.push(context, MaterialPageRoute(builder: (context) => RecordsScreen()));
+    // if (index == 3 && mounted) Navigator.push(context, MaterialPageRoute(builder: (context) => NearbyScreen()));
+    // if (index == 4 && mounted) Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileScreen(userData: _userData)));
   }
 
-  void _scanQrCode() { // This is for the bottom nav QR scanner
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('QR Code Scanner Tapped!')),
-    );
+  void _scanQrCode() {
+    // TODO: Navigate to QrScannerScreen and handle result
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('QR Code Scanner Tapped! (Not Implemented)')),
+      );
+    }
     debugPrint('Bottom Nav QR Code Scanner Tapped!');
   }
 
-  void _addNewAppointmentAction() { // Action for the new appointment icon
-     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Add New Appointment Tapped!')),
-    );
+  void _addNewAppointmentAction() {
+    // TODO: Navigate to AddAppointmentScreen
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add New Appointment Tapped! (Not Implemented)')),
+      );
+    }
     debugPrint('Add New Appointment Icon Tapped - Implement action');
   }
 
 
   @override
   Widget build(BuildContext context) {
-    const String userName = "Alexa";
+    String displayName = _isLoadingUserData
+        ? "Loading..."
+        : (_userData?['displayName'] ?? _userData?['fullName'] ?? "User");
     const Color selectedColor = Color(0xFF008080);
     const Color unselectedColor = Colors.grey;
 
@@ -155,9 +336,9 @@ class _HomeScreenState extends State<HomeScreen> {
             elevation: 0,
             flexibleSpace: FlexibleSpaceBar(
               titlePadding: const EdgeInsets.only(left: 16.0, bottom: 16.0),
-              title: const Text(
-                'Hii $userName',
-                style: TextStyle(
+              title: Text(
+                'Hii $displayName',
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 24.0,
                   fontWeight: FontWeight.bold,
@@ -173,11 +354,45 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.logout, color: Colors.white),
+                tooltip: 'Logout',
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (BuildContext dialogContext) {
+                      return AlertDialog(
+                        title: const Text('Confirm Logout'),
+                        content: const Text('Are you sure you want to log out?'),
+                        actions: <Widget>[
+                          TextButton(
+                            child: const Text('Cancel'),
+                            onPressed: () {
+                              Navigator.of(dialogContext).pop();
+                            },
+                          ),
+                          TextButton(
+                            child: const Text('Logout', style: TextStyle(color: Colors.red)),
+                            onPressed: () {
+                              Navigator.of(dialogContext).pop();
+                              _logoutUser();
+                            },
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
+            ],
           ),
           SliverList(
             delegate: SliverChildListDelegate(
               [
-                _buildPatientInfoCard(),
+                _isLoadingUserData
+                    ? const Center(child: Padding(padding: EdgeInsets.all(20.0), child: CircularProgressIndicator()))
+                    : _buildPatientInfoCard(_userData),
                 _buildActionButtonsGrid(),
                 _buildPrescriptionSection(),
                 _buildAppointmentsSection(),
@@ -201,7 +416,7 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Home',
           ),
           BottomNavigationBarItem(
-            icon: _buildRecordsIcon( // Reverted to simple records icon
+            icon: _buildRecordsIcon(
               color: _selectedIndex == 1 ? selectedColor : unselectedColor,
               size: 24,
             ),
@@ -223,27 +438,21 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             label: 'Scan',
           ),
-          // --- CORRECTED "NEARBY" TAB TO USE SVG ---
           BottomNavigationBarItem(
-            icon: SvgPicture.asset( 
-              'assets/icons/nearby.svg', // <<<< ENSURE THIS PATH IS CORRECT AND SVG IS IN ASSETS
+            icon: SvgPicture.asset(
+              'assets/icons/nearby.svg',
               width: 24,
               height: 24,
-              colorFilter: ColorFilter.mode( 
+              colorFilter: ColorFilter.mode(
                   _selectedIndex == 3 ? selectedColor : unselectedColor,
                   BlendMode.srcIn),
             ),
-            label: 'Nearby', 
+            label: 'Nearby',
           ),
-          // --- END CORRECTED TAB ---
           BottomNavigationBarItem(
             icon: _buildCompositeProfileIcon(
               color: _selectedIndex == 4 ? selectedColor : unselectedColor,
-              shoulderWidth: 26,
-              shoulderHeight: 13,
-              headDiameter: 15,
-              headOffsetY: -3.5,
-              headOffsetX: 0,
+              shoulderWidth: 26, shoulderHeight: 13, headDiameter: 15, headOffsetY: -3.5, headOffsetX: 0,
             ),
             label: 'Profile',
           ),
@@ -262,7 +471,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildPatientInfoCard() {
+  Widget _buildPatientInfoCard(Map<String, dynamic>? patientData) {
+    String name = patientData?['displayName'] ?? patientData?['fullName'] ?? 'N/A';
+    String id = patientData?['patientId'] ?? 'N/A';
+    String age = patientData?['age']?.toString() ?? 'N/A';
+    String bloodGroup = patientData?['bloodGroup'] ?? 'N/A';
+    String? profilePicUrl = patientData?['profilePictureUrl'];
+
     return Card(
       margin: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0, bottom: 20.0),
       elevation: 3.0,
@@ -277,26 +492,28 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildInfoText('Name', 'Patient Name'),
+                  _buildInfoText('Name', name),
                   const SizedBox(height: 5),
-                  _buildInfoText('Id', '12345'),
+                  _buildInfoText('Id', id),
                   const SizedBox(height: 5),
-                  _buildInfoText('Age', '54'),
+                  _buildInfoText('Age', age),
                   const SizedBox(height: 5),
-                  _buildInfoText('Blood Group', 'O+'),
+                  _buildInfoText('Blood Group', bloodGroup),
                 ],
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
               flex: 1,
-              child: Container(
-                height: 70,
-                width: 70,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF008080), width: 2.5),
-                ),
+              child: CircleAvatar(
+                radius: 35,
+                backgroundColor: const Color(0xFF008080).withAlpha(128),
+                backgroundImage: (profilePicUrl != null && profilePicUrl.isNotEmpty)
+                    ? NetworkImage(profilePicUrl)
+                    : null,
+                child: (profilePicUrl == null || profilePicUrl.isEmpty)
+                    ? Icon(Icons.person, size: 40, color: Colors.grey[100])
+                    : null,
               ),
             ),
           ],
@@ -334,20 +551,37 @@ class _HomeScreenState extends State<HomeScreen> {
             iconPath: 'assets/icons/medical_icon.svg',
             label: 'Book\nAppointment',
             onTap: () {
+              // TODO: Navigate to BookAppointmentScreen
+              if(mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Book Appointment (Not Implemented)')));
               debugPrint('Book Appointment Tapped');
+              }
             },
           ),
           _actionButton(
             iconPath: 'assets/icons/labs_icon.svg',
             label: 'Book\nLab test',
             onTap: () {
+              // TODO: Navigate to BookLabTestScreen
+              if(mounted){
+
+               ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Book Lab Test (Not Implemented)')));
               debugPrint('Book Lab Test Tapped');
+              }
             },
           ),
           _actionButton(
             iconPath: 'assets/icons/order_icon_1.svg',
             label: 'Order\nMedicine',
             onTap: () {
+              // TODO: Navigate to OrderMedicineScreen
+               if(mounted) {
+                 ScaffoldMessenger.of(context).showSnackBar(
+                   const SnackBar(content: Text('Order Medicine (Not Implemented)'))
+                 );
+               }
               debugPrint('Order Medicine Tapped');
             },
           ),
@@ -355,6 +589,12 @@ class _HomeScreenState extends State<HomeScreen> {
             iconPath: 'assets/icons/video_icon.svg',
             label: 'Video\nConsultation',
             onTap: () {
+              // TODO: Navigate to VideoConsultationScreen
+               if(mounted) {
+                 ScaffoldMessenger.of(context).showSnackBar(
+                   const SnackBar(content: Text('Video Consultation (Not Implemented)'))
+                 );
+               }
               debugPrint('Video Consultation Tapped');
             },
           ),
@@ -406,6 +646,29 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildPrescriptionSection() {
+    String prescriptionDetails = "No prescriptions found.";
+    String doctorName = "N/A";
+    String dateIssuedFormatted = "N/A";
+
+    if (_isLoadingPrescription) {
+      prescriptionDetails = "Loading prescriptions...";
+    } else if (_latestPrescription != null && _latestPrescription!.exists) {
+      Map<String, dynamic> data = _latestPrescription!.data() as Map<String, dynamic>;
+      doctorName = data['doctorName'] ?? 'N/A';
+      if (data['dateIssued'] is Timestamp) {
+        dateIssuedFormatted = DateFormat('dd MMM, yyyy').format((data['dateIssued'] as Timestamp).toDate());
+      }
+      List<dynamic> medications = data['medications'] ?? [];
+      if (medications.isNotEmpty) {
+        String medsSummary = medications
+            .map((med) => "- ${med['name']} (${med['dosage'] ?? 'N/A'}) - ${med['frequency'] ?? 'N/A'}")
+            .join("\n");
+         prescriptionDetails = "Latest from Dr. $doctorName on $dateIssuedFormatted:\n$medsSummary";
+      } else {
+        prescriptionDetails = "Latest prescription from Dr. $doctorName on $dateIssuedFormatted has no listed medications.";
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0),
       child: Card(
@@ -418,36 +681,30 @@ class _HomeScreenState extends State<HomeScreen> {
           tilePadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           leading: SvgPicture.asset(
             'assets/icons/medical_icon.svg',
-            width: 26,
-            height: 26,
+            width: 26, height: 26,
             colorFilter: const ColorFilter.mode(Color(0xFF008080), BlendMode.srcIn),
           ),
-          title: const Text(
-            'Prescription',
-            style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF00695C)),
-          ),
+          title: const Text('Prescription', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Color(0xFF00695C))),
           iconColor: const Color(0xFF008080),
           collapsedIconColor: Colors.grey[600],
-          childrenPadding:
-              const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 16.0),
+          childrenPadding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 16.0, top: 8.0),
           children: <Widget>[
-            const Text(
-                'Latest prescription details will be shown here. You can list medications, dosage, and notes.'),
+            _isLoadingPrescription
+              ? const Center(child: CircularProgressIndicator())
+              : Text(prescriptionDetails, style: TextStyle(color: Colors.grey[700], fontSize: 14)),
             const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: () {
-                  // Navigate to full prescription view
+                  // TODO: Navigate to AllPrescriptionsScreen
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('View All Prescriptions (Not Implemented)')),
+                    );
+                  }
                 },
-                child: const Text(
-                  'View All',
-                  style: TextStyle(
-                      color: Color(0xFF008080), fontWeight: FontWeight.bold),
-                ),
+                child: const Text('View All', style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -465,77 +722,94 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Appointments',
-                style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF00695C)),
-              ),
+              const Text('Appointments', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Color(0xFF00695C))),
               InkWell(
                 onTap: _addNewAppointmentAction,
                 customBorder: const CircleBorder(),
                 child: Tooltip(
                   message: 'Add New Appointment',
                   child: _buildCompositeAppointmentIcon(
-                    outerColor: Colors.teal.shade300,
-                    innerColor: const Color(0xFF008080),
-                    circleDiameter: 38,
-                    innerIconSize: 18,
+                    outerColor: Colors.teal.shade300, innerColor: const Color(0xFF008080), circleDiameter: 38, innerIconSize: 18,
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          _buildAppointmentItem(
-            profileWidget: _buildCompositeProfileIcon(
-              color: const Color(0xFF008080),
-              shoulderWidth: 22,
-              shoulderHeight: 11,
-              headDiameter: 12,
-              headOffsetY: -2.5,
-              headOffsetX: 0,
-            ),
-            name: 'Dr. Emily Carter (Cardiologist)',
-            dateTime: '20 May, 2025 - 10:00 AM',
-          ),
-          const SizedBox(height: 10),
-          _buildAppointmentItem(
-            profileWidget: CircleAvatar(
-              backgroundColor: Colors.teal.withAlpha(26),
-              child: SvgPicture.asset('assets/icons/labs_icon.svg', // This is correct for the appointment item
-                  width: 22,
-                  height: 22,
-                  colorFilter: const ColorFilter.mode(
-                      Color(0xFF008080), BlendMode.srcIn)),
-            ),
-            name: 'Lab Test: Blood Panel',
-            dateTime: '21 May, 2025 - 08:30 AM',
-          ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () {
-                // Navigate to all appointments screen
-              },
-              child: const Text(
-                'View All',
-                style: TextStyle(
-                    color: Color(0xFF008080), fontWeight: FontWeight.bold),
+          _isLoadingAppointments
+              ? const Center(child: CircularProgressIndicator())
+              : _upcomingAppointments.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16.0),
+                      child: Center(child: Text("No upcoming appointments.")))
+                  : Column(
+                      children: _upcomingAppointments.map((doc) {
+                        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+                        String name = data['doctorName'] ?? data['testName'] ?? data['appointmentType'] ?? 'Appointment';
+                        String dateTimeStr = 'Date/Time N/A';
+                        if (data['dateTime'] != null && data['dateTime'] is Timestamp) {
+                          DateTime dt = (data['dateTime'] as Timestamp).toDate();
+                          dateTimeStr = DateFormat('dd MMM, yyyy - hh:mm a').format(dt);
+                        }
+
+                        Widget profileIconWidget = _buildCompositeProfileIcon(
+                            color: const Color(0xFF008080), shoulderWidth: 22, shoulderHeight: 11, headDiameter: 12, headOffsetY: -2.5);
+                        if (data['appointmentType'] == 'lab_test' || (data['testName'] != null)) {
+                           profileIconWidget = CircleAvatar(
+                              backgroundColor: Colors.teal.withAlpha(30),
+                              child: SvgPicture.asset('assets/icons/labs_icon.svg', width: 22, height: 22, colorFilter: const ColorFilter.mode(Color(0xFF008080), BlendMode.srcIn)),
+                            );
+                        } else if (data['appointmentType'] == 'video_consultation') {
+                            profileIconWidget = CircleAvatar(
+                              backgroundColor: Colors.teal.withAlpha(30),
+                              child: SvgPicture.asset('assets/icons/video_icon.svg', width: 22, height: 22, colorFilter: const ColorFilter.mode(Color(0xFF008080), BlendMode.srcIn)),
+                            );
+                        }
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10.0),
+                          child: _buildAppointmentItem(
+                            profileWidget: profileIconWidget,
+                            name: name,
+                            dateTime: dateTimeStr,
+                            onTap: () {
+                              // TODO: Navigate to AppointmentDetailsScreen(appointmentId: doc.id)
+                              if(mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Tapped on ${doc.id} (Not Implemented)')),
+                                );
+                              }
+                            }
+                          ),
+                        );
+                      }).toList(),
+                    ),
+          if (!_isLoadingAppointments && _upcomingAppointments.isNotEmpty)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () {
+                  // TODO: Navigate to AllAppointmentsScreen
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('View All Appointments (Not Implemented)')),
+                    );
+                  }
+                },
+                child: const Text('View All', style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold)),
               ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildAppointmentItem(
-      {required Widget profileWidget,
-      required String name,
-      required String dateTime}) {
+  Widget _buildAppointmentItem({
+    required Widget profileWidget,
+    required String name,
+    required String dateTime,
+    VoidCallback? onTap,
+  }) {
     return Card(
       elevation: 1.0,
       shape: RoundedRectangleBorder(
@@ -544,18 +818,12 @@ class _HomeScreenState extends State<HomeScreen> {
       color: Colors.white,
       child: ListTile(
         leading: profileWidget,
-        title: Text(name,
-            style: const TextStyle(
-                fontWeight: FontWeight.w500,
-                fontSize: 15,
-                color: Color(0xFF004D40))),
-        subtitle:
-            Text(dateTime, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-        trailing:
-            Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey[400]),
-        onTap: () {
-          debugPrint('Appointment Tapped: $name');
-        },
+        title: Text(name, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15, color: Color(0xFF004D40))),
+        subtitle: Text(dateTime, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+        trailing: Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey[400]),
+        onTap: onTap ?? () {
+            debugPrint('Appointment Tapped: $name');
+          },
       ),
     );
   }
