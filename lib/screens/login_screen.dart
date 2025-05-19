@@ -51,10 +51,6 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text.trim(),
       );
 
-      // Navigation to HomeScreen is handled by StreamBuilder in main.dart
-      // So, no explicit navigation here after successful login is strictly needed
-      // if main.dart's StreamBuilder is correctly set up.
-      // However, if you want immediate navigation before StreamBuilder rebuilds:
       if (userCredential.user != null && mounted) {
         Navigator.pushReplacement(
           context,
@@ -70,8 +66,6 @@ class _LoginScreenState extends State<LoginScreen> {
       } else if (e.code == 'invalid-email') {
         message = 'The email address is not valid.';
       } else if (e.code == 'invalid-credential') {
-        // This code can be triggered for various reasons including user-not-found or wrong-password
-        // depending on the Firebase SDK version and backend behavior.
         message = 'Invalid credentials. Please check your email and password.';
       }
       if (mounted) {
@@ -104,12 +98,11 @@ class _LoginScreenState extends State<LoginScreen> {
         _isLoading = true;
       });
     }
-    UserCredential? userCredential; // To hold the credential for potential rollback
+    UserCredential? userCredential; 
 
     try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
-        // User cancelled the Google Sign In
         if (mounted) setState(() => _isLoading = false);
         return;
       }
@@ -125,63 +118,59 @@ class _LoginScreenState extends State<LoginScreen> {
       User? user = userCredential.user;
 
       if (user != null) {
-        // Use 'users' collection as per our schema
         final userDocRef = _firestore.collection('users').doc(user.uid);
         final userDocSnapshot = await userDocRef.get();
 
         if (!userDocSnapshot.exists) {
-          // New user: Create document in 'users' collection
           debugPrint(
               "New Google user: ${user.uid}. Creating document in 'users' collection...");
           
-          // Generate patientId as per your existing logic
           String generatedPatientId = 'PATG${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
 
           Map<String, dynamic> userData = {
-            'uid': user.uid, // Storing uid as a field as well
+            'uid': user.uid, 
             'email': user.email,
-            'displayName': user.displayName, // Mapped from Google's displayName
-            'photoURL': user.photoURL,       // Mapped from Google's photoURL
+            'displayName': user.displayName, 
+            'photoURL': user.photoURL,       
             'providerId': 'google.com',
-            'createdAt': FieldValue.serverTimestamp(),
-            'phoneNumber': user.phoneNumber, // From Google, might be null
-            // Initialize other fields from our schema with empty/null values
+            'createdAt': FieldValue.serverTimestamp(), // Rule expects request.time
+            'role': 'patient', // Ensures 'role' is present
+            'phoneNumber': user.phoneNumber, // Can be null, but key should be present
             'age': null,
-            'bloodGroup': null, // Or ""
+            'bloodGroup': null, 
             'patientId': generatedPatientId, 
             'fcmToken': null,
+            // Add any other fields that your 'users' create rule's hasAll() expects, initializing to null if not available
           };
-
+          debugPrint("Attempting to create user document (Google Sign-In): $userData");
           await userDocRef.set(userData);
           debugPrint(
               "User document created successfully in 'users' collection for Google user: ${user.uid}");
         } else {
-          // Existing user: Optionally update certain fields
           debugPrint(
               "Existing user profile for Google user: ${user.uid}. Checking for updates in 'users' collection.");
           Map<String, dynamic> existingUserData =
               userDocSnapshot.data() as Map<String, dynamic>;
           Map<String, dynamic> updates = {};
 
-          // Update email if changed (and not null from Google)
           if (user.email != null && existingUserData['email'] != user.email) {
             updates['email'] = user.email;
           }
-          // Update displayName if changed (and not null/empty from Google)
           if (user.displayName != null &&
               user.displayName!.isNotEmpty &&
               existingUserData['displayName'] != user.displayName) {
             updates['displayName'] = user.displayName;
           }
-          // Update photoURL if changed (and not null from Google)
           if (user.photoURL != null && existingUserData['photoURL'] != user.photoURL) {
             updates['photoURL'] = user.photoURL;
           }
-           // Update phoneNumber if changed (can be set to null if removed from Google)
           if (existingUserData['phoneNumber'] != user.phoneNumber) {
             updates['phoneNumber'] = user.phoneNumber;
           }
-
+          // Ensure role is set if it's missing for older documents
+          if (existingUserData['role'] == null) {
+            updates['role'] = 'patient';
+          }
 
           if (updates.isNotEmpty) {
             await userDocRef.update(updates);
@@ -206,7 +195,6 @@ class _LoginScreenState extends State<LoginScreen> {
       debugPrint(
           'FirebaseAuthException during Google Sign-In: ${e.code} - ${e.message}');
     } on FirebaseException catch (e) {
-      // This catches Firestore specific errors during set/update
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -216,7 +204,6 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       debugPrint(
           'FirebaseException during Firestore write (Google Sign-In): ${e.code} - ${e.message}. UID was: ${userCredential?.user?.uid}');
-      // Attempt to delete the orphaned Firebase Auth user if Firestore operation failed
       if (userCredential?.user != null) {
         debugPrint(
             "Attempting to delete orphaned Google auth user: ${userCredential!.user!.uid}");
@@ -238,7 +225,6 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       debugPrint(
           'Generic Google Sign-In Error: $e. UID was: ${userCredential?.user?.uid}');
-      // Attempt to delete the orphaned Firebase Auth user in case of other errors post-auth
       if (userCredential?.user != null) {
         debugPrint(
             "Attempting to delete orphaned Google auth user (due to generic error): ${userCredential!.user!.uid}");
@@ -250,7 +236,8 @@ class _LoginScreenState extends State<LoginScreen> {
               "Failed to delete orphaned Google auth user ${userCredential!.user!.uid} (generic error case): $deleteError");
         });
       }
-    } finally {
+    } 
+    finally {
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -311,12 +298,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
-    // --- UI CODE REMAINS UNCHANGED AS PER YOUR REQUEST ---
-    // I will not repeat the UI build method here as it's unchanged.
-    // The functional changes are within the _loginUser, _signInWithGoogle, 
-    // and _forgotPassword methods above.
-    // Assume your existing build method is here.
-    // For completeness, I'll paste your build method here without modification.
     return Scaffold(
       backgroundColor: Colors.white,
       body: LayoutBuilder(
@@ -438,7 +419,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               const SizedBox(height: 20),
                               SocialLoginButton(
                                 text: 'Login With Google',
-                                onPressed: _isLoading ? () {} : _signInWithGoogle, // Ensure _isLoading disables this too
+                                onPressed: _isLoading ? () {} : _signInWithGoogle, 
                                 icon: 'assets/icons/google.svg', 
                               ),
                               const SizedBox(height: 20),
@@ -471,8 +452,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// SocialLoginButton widget remains unchanged as it's a UI component.
-// I'll paste your SocialLoginButton code here without modification.
 class SocialLoginButton extends StatelessWidget {
   final String text;
   final VoidCallback onPressed;

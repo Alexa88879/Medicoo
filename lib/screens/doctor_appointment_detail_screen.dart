@@ -15,26 +15,16 @@ class DoctorAppointmentDetailScreen extends StatefulWidget {
       _DoctorAppointmentDetailScreenState();
 }
 
-class _DoctorAppointmentDetailScreenState
-    extends State<DoctorAppointmentDetailScreen> {
+class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final TextEditingController _notesController = TextEditingController();  // Add this line
 
   DateTime? _selectedDate;
   String? _selectedTimeSlot;
-  bool _isLoading = false; // General loading state for the screen or specific parts
-  bool _isBooking = false; // Specific loading state for the booking process
+  bool _isLoading = false;
+  bool _isBooking = false;
   String? _currentUserName;
-
-  // Example static time slots as per PDF - can be made dynamic later
-  final List<String> _timeSlots = [
-    '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM',
-    '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM',
-    '01:00 PM', '01:30 PM', '02:00 PM', '02:30 PM',
-    '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM',
-    '05:00 PM'
-  ];
-
   List<String> _availableTimeSlots = [];
 
   @override
@@ -87,170 +77,160 @@ class _DoctorAppointmentDetailScreenState
       _filterAvailableSlotsForSelectedDate();
     }
   }
-  
+
   Future<void> _filterAvailableSlotsForSelectedDate() async {
-    if (_selectedDate == null) {
-      if (mounted) setState(() => _availableTimeSlots = []);
-      return;
-    }
-
-    if (mounted) setState(() => _isLoading = true);
-
-    List<String> generalDaySlots = [];
-    if (widget.doctor.availableSlots != null) {
-      String dayOfWeek = DateFormat('EEEE').format(_selectedDate!).toLowerCase(); 
-      generalDaySlots = widget.doctor.availableSlots![dayOfWeek] ?? _timeSlots; 
-    } else {
-      generalDaySlots = List.from(_timeSlots); 
+    if (mounted) {
+      setState(() {
+        _isLoading = true;  // Changed from _isLoadingSlots to _isLoading
+      });
     }
     
     try {
-      final String formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate!);
-      QuerySnapshot bookedSlotsSnapshot = await _firestore
+      String dayOfWeek = DateFormat('EEEE').format(_selectedDate!).toLowerCase();
+      
+      DocumentSnapshot doctorDoc = await _firestore.collection('doctors').doc(widget.doctor.uid).get();
+      
+      if (!doctorDoc.exists) {
+        throw Exception('Doctor document not found');
+      }
+
+      Map<String, dynamic> doctorData = doctorDoc.data() as Map<String, dynamic>;
+      
+      // Improved error handling and type checking
+      if (!doctorData.containsKey('availableSlots')) {
+        debugPrint('No availableSlots field found in doctor document');
+        if (mounted) {
+          setState(() {
+            _availableTimeSlots = [];
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
+      var availableSlots = doctorData['availableSlots'];
+      if (availableSlots == null || !availableSlots.containsKey(dayOfWeek)) {
+        debugPrint('No slots available for $dayOfWeek');
+        if (mounted) {
+          setState(() {
+            _availableTimeSlots = [];
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
+      // Properly handle the data type conversion
+      List<String> slots = List<String>.from(availableSlots[dayOfWeek] ?? []);
+      
+      // Get booked appointments
+      String formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate!);
+      QuerySnapshot appointmentsSnapshot = await _firestore
           .collection('appointments')
           .where('doctorId', isEqualTo: widget.doctor.uid)
           .where('appointmentDate', isEqualTo: formattedDate)
-          .where('status', whereIn: ['booked', 'confirmed']) 
+          .where('status', isEqualTo: 'booked')
           .get();
-
-      List<String> bookedTimes = bookedSlotsSnapshot.docs
+          
+      List<String> bookedSlots = appointmentsSnapshot.docs
           .map((doc) => (doc.data() as Map<String, dynamic>)['appointmentTime'] as String)
           .toList();
+          
+      slots.removeWhere((slot) => bookedSlots.contains(slot));
       
       if (mounted) {
         setState(() {
-          _availableTimeSlots = generalDaySlots.where((slot) => !bookedTimes.contains(slot)).toList();
+          _availableTimeSlots = slots;
           _isLoading = false;
         });
       }
-
     } catch (e) {
-      debugPrint("Error fetching booked slots: $e");
-      if (mounted) { // Guard context access
-         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading available slots: ${e.toString()}')),
-        );
+      debugPrint('Error filtering slots: $e');
+      if (mounted) {
         setState(() {
-          _availableTimeSlots = List.from(generalDaySlots); 
+          _availableTimeSlots = [];
           _isLoading = false;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading time slots: ${e.toString()}')),
+        );
       }
     }
   }
 
 
   Future<void> _bookAppointment() async {
-    if (_selectedDate == null || _selectedTimeSlot == null) {
-      if (mounted) { // Guard context access
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please select a date and time slot.')),
-        );
-      }
+    if (_selectedTimeSlot == null || _selectedDate == null) {  // Changed from _selectedSlot to _selectedTimeSlot
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a date and time slot')),
+      );
       return;
     }
-
-    User? currentUser = _auth.currentUser;
-    if (currentUser == null) {
-      if (mounted) { // Guard context access
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('You need to be logged in to book.')),
-        );
-      }
-      return;
-    }
-     if (_currentUserName == null) {
-      if (mounted) { // Guard context access
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Fetching user details, please wait...')),
-        );
-      }
-      await _fetchCurrentUserName(); 
-      if(_currentUserName == null) { // Re-check after attempting to fetch
-         if (mounted) { // Guard context access
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Could not fetch user details. Please try again.')),
-            );
-         }
-        return;
-      }
-    }
-
-    if (mounted) setState(() => _isBooking = true); // Use _isBooking for the button loader
 
     try {
-      final String datePart = DateFormat('yyyy-MM-dd').format(_selectedDate!);
-      final timeParts = _selectedTimeSlot!.split(' '); 
-      final hourMinute = timeParts[0].split(':'); 
-      int hour = int.parse(hourMinute[0]);
-      final int minute = int.parse(hourMinute[1]);
+      setState(() {
+        _isBooking = true;
+      });
 
-      if (timeParts[1].toUpperCase() == 'PM' && hour != 12) {
-        hour += 12;
-      } else if (timeParts[1].toUpperCase() == 'AM' && hour == 12) { 
-        hour = 0;
-      }
+      // Format date in UTC
+// Removed unused variable 'now'
+      String formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate!);
+      
+      // Create appointment ID with sanitized time slot
+      String sanitizedTimeSlot = _selectedTimeSlot!.replaceAll(' ', '_').replaceAll(':', '_');
+      String appointmentId = '${widget.doctor.uid}_${_auth.currentUser!.uid}_${formattedDate}_$sanitizedTimeSlot';
 
-      final DateTime fullDateTime = DateTime(
+      // Convert time slot to DateTime
+      final timeComponents = DateFormat('hh:mm a').parse(_selectedTimeSlot!);
+      final appointmentDateTime = DateTime(
         _selectedDate!.year,
         _selectedDate!.month,
         _selectedDate!.day,
-        hour,
-        minute,
-      );
-      final Timestamp appointmentTimestamp = Timestamp.fromDate(fullDateTime);
+        timeComponents.hour,
+        timeComponents.minute,
+      ).toUtc(); // Convert to UTC
 
-      QuerySnapshot existingAppointments = await _firestore
-          .collection('appointments')
-          .where('doctorId', isEqualTo: widget.doctor.uid)
-          .where('dateTimeFull', isEqualTo: appointmentTimestamp)
-          .where('status', whereIn: ['booked', 'confirmed'])
-          .limit(1)
-          .get();
+      // Ensure we have a valid user name
+      final String userName = _currentUserName ?? 'Unknown User';
 
-      if (existingAppointments.docs.isNotEmpty) {
-        if (mounted) { // Guard context access
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('This slot was just booked. Please select another.')),
-          );
-        }
-        _filterAvailableSlotsForSelectedDate(); 
-        if (mounted) setState(() => _isBooking = false);
-        return;
-      }
-
-      DocumentReference appointmentRef = _firestore.collection('appointments').doc();
-      await appointmentRef.set({
-        'appointmentId': appointmentRef.id, 
-        'userId': currentUser.uid,
-        'userName': _currentUserName, 
+      // Create appointment with exact field structure matching security rules
+      final appointmentData = {
+        'appointmentId': appointmentId,
+        'userId': _auth.currentUser!.uid,
+        'userName': userName,
         'doctorId': widget.doctor.uid,
         'doctorName': widget.doctor.name,
         'doctorSpeciality': widget.doctor.specialization,
-        'appointmentDate': datePart, 
-        'appointmentTime': _selectedTimeSlot,
-        'dateTimeFull': appointmentTimestamp, 
-        'category': widget.doctor.specialization, 
-        'status': 'booked', 
+        'appointmentDate': formattedDate,
+        'appointmentTime': _selectedTimeSlot!,
+        'dateTimeFull': appointmentDateTime, // UTC DateTime
+        'category': widget.doctor.specialization,
+        'status': 'booked',
         'createdAt': FieldValue.serverTimestamp(),
-        'notes': '', 
-      });
+        'updatedAt': FieldValue.serverTimestamp(),
+        'notes': _notesController.text.trim(),
+      };
 
-      if (mounted) { // Guard context access
+      await _firestore.collection('appointments').doc(appointmentId).set(appointmentData);
+
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Appointment booked successfully!')),
         );
-        Navigator.of(context).popUntil((route) => route.isFirst); 
+        Navigator.pop(context);
       }
     } catch (e) {
-      debugPrint("Error booking appointment: $e");
-      if (mounted) { // Guard context access
+      debugPrint('Error booking appointment: $e');
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to book appointment: ${e.toString()}')),
         );
       }
     } finally {
       if (mounted) {
-        setState(() => _isBooking = false);
+        setState(() {
+          _isBooking = false;
+        });
       }
     }
   }
@@ -419,5 +399,11 @@ class _DoctorAppointmentDetailScreenState
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
   }
 }

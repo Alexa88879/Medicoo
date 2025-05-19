@@ -72,10 +72,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _isLoading = true;
     });
 
-    UserCredential? userCredential; // For potential rollback
+    UserCredential? userCredential; 
 
     try {
-      // 1. Create Firebase Auth user
       userCredential = await _auth.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
@@ -84,35 +83,32 @@ class _SignUpScreenState extends State<SignUpScreen> {
       User? newUser = userCredential.user;
 
       if (newUser != null) {
-        // Generate patientId as per your existing logic
         String generatedPatientId =
             'PATIENT${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
         String nameInput = _nameController.text.trim();
         String emailInput = newUser.email!;
 
-        // Write to the 'users' collection as per our schema
         DocumentReference userDocRef =
             _firestore.collection('users').doc(newUser.uid);
 
         Map<String, dynamic> userData = {
-          'uid': newUser.uid, // Storing uid as a field as well
+          'uid': newUser.uid, 
           'email': emailInput,
           'displayName': nameInput,
-          'photoURL': null, // Not collected at email/password signup
-          'providerId': 'password', // For email/password signup
-          'createdAt': FieldValue.serverTimestamp(),
-          // Initialize other fields from our schema with empty/null values
-          'phoneNumber': null,
+          'photoURL': null, 
+          'providerId': 'password', 
+          'createdAt': FieldValue.serverTimestamp(), // Rule expects request.time
+          'role': 'patient', // <<< ADDED ROLE
           'age': null,
-          'bloodGroup': null, // Or ""
+          'bloodGroup': null, 
           'patientId': generatedPatientId,
           'fcmToken': null,
+          'phoneNumber': null, // Ensure all fields from rule are present
         };
 
         debugPrint(
-            "Prepared to write to 'users' collection: $userData for UID: ${newUser.uid}");
+            "Attempting to create user document in Firestore: $userData for UID: ${newUser.uid}");
 
-        // Commit the user data to Firestore
         await userDocRef.set(userData);
         debugPrint(
             "User document created successfully in 'users' collection for: ${newUser.uid}");
@@ -124,10 +120,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
           );
         }
       } else {
-        // This case should ideally not be reached if createUserWithEmailAndPassword succeeds
         throw Exception("Firebase Auth user created but is null.");
       }
-    } on FirebaseAuthException catch (e) {
+    } on FirebaseAuthException catch (e) { 
       String message = 'An error occurred during sign up.';
       if (e.code == 'weak-password') {
         message = 'The password provided is too weak.';
@@ -143,8 +138,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       }
       debugPrint(
           'FirebaseAuthException during sign up: ${e.code} - ${e.message}');
-    } on FirebaseException catch (e) {
-      // This catches Firestore specific errors during set/update
+    } on FirebaseException catch (e) { 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to save user data: ${e.message}')),
@@ -152,7 +146,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       }
       debugPrint(
           'FirebaseException during Firestore write to users collection: ${e.code} - ${e.message}. UID was: ${userCredential?.user?.uid}');
-      // Attempt to delete the orphaned Firebase Auth user if Firestore operation failed
       if (userCredential?.user != null) {
         debugPrint(
             "Attempting to delete orphaned auth user: ${userCredential!.user!.uid}");
@@ -164,7 +157,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               "Failed to delete orphaned auth user ${userCredential!.user!.uid}: $deleteError");
         });
       }
-    } catch (e) {
+    } catch (e) { 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -174,7 +167,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       }
       debugPrint(
           'Generic sign up error: $e. UID was: ${userCredential?.user?.uid}');
-      // Attempt to delete the orphaned Firebase Auth user in case of other errors post-auth
       if (userCredential?.user != null) {
         debugPrint(
             "Attempting to delete orphaned auth user (due to generic error): ${userCredential!.user!.uid}");
@@ -186,7 +178,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
               "Failed to delete orphaned auth user ${userCredential!.user!.uid} (generic error case): $deleteError");
         });
       }
-    } finally {
+    } 
+    finally {
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -194,16 +187,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
       }
     }
   }
-
+  // ... (build method and helpers remain the same) ...
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
-    // --- UI CODE REMAINS UNCHANGED AS PER YOUR REQUEST ---
-    // I will not repeat the UI build method here as it's unchanged.
-    // The functional changes are within the _signUpUser method above.
-    // Assume your existing build method is here.
-    // For completeness, I'll paste your build method here without modification.
     return Scaffold(
       backgroundColor: Colors.white,
       body: LayoutBuilder( 
