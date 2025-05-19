@@ -5,10 +5,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:intl/intl.dart';
-import 'admin_data_seeder_screen.dart'; // Add this import
+import 'admin_data_seeder_screen.dart'; 
 import 'login_screen.dart';
 import 'select_category_screen.dart';
-// ... (your helper icon widgets remain the same) ...
+import 'nearby_screen_gplaces.dart'; 
+import 'profile_screen.dart'; 
+
+// Helper icon widgets (ensure these asset paths are correct in your project)
 Widget _buildCompositeProfileIcon({
   required Color color,
   double shoulderWidth = 24,
@@ -115,30 +118,38 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _selectedIndex = 0;
+  int _selectedIndex = 0; 
   User? _currentUser;
   Map<String, dynamic>? _userData; 
 
   DocumentSnapshot? _latestPrescription;
   List<DocumentSnapshot> _upcomingAppointments = [];
 
-  bool _isLoadingUserData = true; 
-  bool _isLoadingPrescription = true;
-  bool _isLoadingAppointments = true;
+  bool _isHomeDataLoading = true; 
   
-  String _appBarDisplayName = "Loading..."; 
+  String _appBarDisplayName = "Loading..."; // Start with "Loading..."
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  late final List<Widget Function()> _widgetOptions;
+
   @override
   void initState() {
     super.initState();
     _currentUser = _auth.currentUser;
+    
+    _widgetOptions = <Widget Function()>[
+      () => _buildHomeTabContent(),
+      () => _buildRecordsTabContent(),
+      () => Container(),
+      () => const NearbyScreenWithGooglePlaces(),
+      () => const ProfileScreen(),
+    ];
+
     if (_currentUser != null) {
-      _appBarDisplayName = _currentUser!.displayName ?? _currentUser!.email ?? "User"; 
-      _loadAllData();
+      _loadHomeData();
     } else {
       _navigateToLogin();
     }
@@ -146,7 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _navigateToLogin() {
      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) { // Ensure widget is still in the tree
+        if (mounted) { 
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const LoginScreen()),
             (Route<dynamic> route) => false,
@@ -155,91 +166,110 @@ class _HomeScreenState extends State<HomeScreen> {
       });
   }
 
-  Future<void> _loadAllData() async {
-    if (!mounted || _currentUser == null) return; // Added check for _currentUser
-    setState(() {
-      _isLoadingUserData = true; 
-      _isLoadingPrescription = true;
-      _isLoadingAppointments = true;
-    });
-
-    await Future.wait([
-      _fetchUserData(), 
-      _fetchLatestPrescription(),
-      _fetchUpcomingAppointments(),
-    ]);
-
-    if (!mounted) return;
-    _updateAppBarDisplayName(); 
-    
-    if (mounted) {
-        setState(() {});
-    }
-  }
-  
-  void _updateAppBarDisplayName() {
-    if (_userData != null && _userData!['displayName'] != null && _userData!['displayName'].isNotEmpty) {
-      _appBarDisplayName = _userData!['displayName'];
-    } else if (_currentUser != null && _currentUser!.displayName != null && _currentUser!.displayName!.isNotEmpty) { // Check if displayName from auth is not empty
-        _appBarDisplayName = _currentUser!.displayName!;
-    } else if (_currentUser != null && _currentUser!.email != null) { // Fallback to email
-         _appBarDisplayName = _currentUser!.email!;
-    }
-     else {
-        _appBarDisplayName = "User"; 
-    }
-  }
-
-  Future<void> _fetchUserData() async { 
-    if (_currentUser == null) {
-      if (mounted) {
+  Future<void> _loadHomeData() async {
+    if (!mounted || _currentUser == null) {
+      debugPrint("HomeScreen: _loadHomeData cancelled - not mounted or no current user.");
+      if(mounted) {
         setState(() {
-          _isLoadingUserData = false;
-          _appBarDisplayName = "User"; 
+          _isHomeDataLoading = false; 
+          _appBarDisplayName = "User"; // Fallback if no user
         });
       }
       return;
     }
+    
+    debugPrint("HomeScreen: _loadHomeData STARTED.");
+    if (mounted) {
+      // Ensure loader is shown if not already, or if refreshing
+      if (!_isHomeDataLoading) setState(() => _isHomeDataLoading = true);
+    }
 
+    try {
+      final Map<String, dynamic>? fetchedUserData = await _fetchUserDataInternal();
+      // Fetch other data concurrently AFTER user data, or pass user data if needed
+      final List<dynamic> otherDataResults = await Future.wait([
+        _fetchLatestPrescriptionInternal(),
+        _fetchUpcomingAppointmentsInternal(),
+      ]);
+
+      final fetchedPrescription = otherDataResults[0] as DocumentSnapshot?;
+      final fetchedAppointments = otherDataResults[1] as List<DocumentSnapshot>?;
+
+      if (mounted) {
+        _userData = fetchedUserData; // Assign fetched user data
+        _appBarDisplayName = _determineAppBarName(); // Determine name based on new _userData
+        _latestPrescription = fetchedPrescription;
+        _upcomingAppointments = fetchedAppointments ?? [];
+        
+        setState(() {
+          // This setState will now reflect all updated data and turn off the loader
+          _isHomeDataLoading = false; 
+        });
+        debugPrint("HomeScreen: _loadHomeData completed. _appBarDisplayName: $_appBarDisplayName, _isHomeDataLoading: $_isHomeDataLoading, UserData found: ${_userData != null}");
+      }
+
+    } catch (e) {
+        debugPrint("HomeScreen: Error in _loadHomeData: $e");
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error loading home data: ${e.toString()}')),
+          );
+           setState(() { 
+             _isHomeDataLoading = false;
+             _appBarDisplayName = _currentUser?.email ?? "User"; // Fallback on error
+           });
+        }
+    }
+  }
+  
+  // This function now just determines the name, doesn't call setState
+  String _determineAppBarName() {
+    if (_userData != null && _userData!['displayName'] != null && _userData!['displayName'].isNotEmpty) {
+      return _userData!['displayName'];
+    } else if (_currentUser != null && _currentUser!.displayName != null && _currentUser!.displayName!.isNotEmpty) { 
+        return _currentUser!.displayName!;
+    } else if (_currentUser != null && _currentUser!.email != null) { 
+         return _currentUser!.email!;
+    }
+    return "User"; 
+  }
+
+  Future<Map<String, dynamic>?> _fetchUserDataInternal() async { 
+    if (_currentUser == null) return null;
+    debugPrint("HomeScreen: _fetchUserDataInternal for UID: ${_currentUser!.uid}");
     try {
       DocumentSnapshot userDocSnap = await _firestore
           .collection('users') 
           .doc(_currentUser!.uid)
           .get();
 
-      Map<String, dynamic>? fetchedData;
       if (userDocSnap.exists) {
-        fetchedData = userDocSnap.data() as Map<String, dynamic>;
-      }
-      
-      if (mounted) {
-        setState(() {
-          _userData = fetchedData; 
-          _isLoadingUserData = false;
-          // _updateAppBarDisplayName(); // Called in _loadAllData after all fetches
-        });
+        debugPrint("HomeScreen: User document found: ${userDocSnap.data()}");
+        return userDocSnap.data() as Map<String, dynamic>;
+      } else {
+        debugPrint("HomeScreen: User document NOT found for UID: ${_currentUser!.uid}");
+        // If user doc not found, it's a critical issue for displaying user-specific info
+        // This might be a case where signup didn't complete Firestore write
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('User profile not found. Please try logging out and back in.')),
+          );
+        }
       }
     } catch (e) {
-      debugPrint("Error fetching user data: $e");
+      debugPrint("HomeScreen: Error in _fetchUserDataInternal: $e");
       if (mounted) {
-        setState(() {
-          _isLoadingUserData = false;
-          // _updateAppBarDisplayName(); // Called in _loadAllData
-        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not load user data.')),
         );
       }
     }
+    return null; 
   }
 
-  Future<void> _fetchLatestPrescription() async {
-    if (_currentUser == null) {
-      if (mounted) setState(() => _isLoadingPrescription = false);
-      return;
-    }
-    if (mounted && !_isLoadingPrescription) setState(() => _isLoadingPrescription = true);
-
+  Future<DocumentSnapshot?> _fetchLatestPrescriptionInternal() async {
+    if (_currentUser == null) return null;
+    debugPrint("HomeScreen: _fetchLatestPrescriptionInternal for UID: ${_currentUser!.uid}");
     try {
       QuerySnapshot snapshot = await _firestore
           .collection('prescriptions')
@@ -247,33 +277,22 @@ class _HomeScreenState extends State<HomeScreen> {
           .orderBy('issueDate', descending: true) 
           .limit(1)
           .get();
-      if (mounted) {
-        setState(() {
-          if (snapshot.docs.isNotEmpty) {
-            _latestPrescription = snapshot.docs.first;
-          } else {
-            _latestPrescription = null; 
-          }
-          _isLoadingPrescription = false;
-        });
+      if (snapshot.docs.isNotEmpty) {
+        debugPrint("HomeScreen: Latest prescription found: ${snapshot.docs.first.id}");
+        return snapshot.docs.first;
+      } else {
+        debugPrint("HomeScreen: No prescriptions found.");
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoadingPrescription = false);
-      debugPrint("Error fetching prescription: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not load prescription: ${e.toString()}')),
-      );
-      }
+      debugPrint("HomeScreen: Error fetching prescription: $e");
+      // No setState here, handled in _loadHomeData
     }
+    return null;
   }
 
-  Future<void> _fetchUpcomingAppointments() async {
-    if (_currentUser == null) {
-      if (mounted) setState(() => _isLoadingAppointments = false);
-      return;
-    }
-    if (mounted && !_isLoadingAppointments) setState(() => _isLoadingAppointments = true);
+  Future<List<DocumentSnapshot>?> _fetchUpcomingAppointmentsInternal() async {
+    if (_currentUser == null) return [];
+     debugPrint("HomeScreen: _fetchUpcomingAppointmentsInternal for UID: ${_currentUser!.uid}");
     try {
       QuerySnapshot snapshot = await _firestore
           .collection('appointments')
@@ -282,21 +301,13 @@ class _HomeScreenState extends State<HomeScreen> {
           .orderBy('dateTimeFull', descending: false) 
           .limit(2) 
           .get();
-      if (mounted) {
-        setState(() {
-          _upcomingAppointments = snapshot.docs;
-          _isLoadingAppointments = false;
-        });
-      }
+      debugPrint("HomeScreen: Upcoming appointments fetched: ${snapshot.docs.length}");
+      return snapshot.docs;
     } catch (e) {
-      if (mounted) setState(() => _isLoadingAppointments = false);
-      debugPrint("Error fetching appointments: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not load appointments: ${e.toString()}')),
-      );
-      }
+      debugPrint("HomeScreen: Error fetching appointments: $e");
+      // No setState here, handled in _loadHomeData
     }
+    return [];
   }
 
   Future<void> _logoutUser() async {
@@ -326,7 +337,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (confirmLogout == true) { 
         try {
-          // Correctly declare and use isGoogleUser
           bool isGoogleUser = _auth.currentUser?.providerData
               .any((userInfo) => userInfo.providerId == GoogleAuthProvider.PROVIDER_ID) ?? false;
 
@@ -354,14 +364,31 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onItemTapped(int index) {
+    if (!mounted) return;
+    debugPrint("HomeScreen: Bottom Nav Tapped: index $index, Current _selectedIndex: $_selectedIndex");
+
+    if (_selectedIndex == index && index != 0) { 
+        debugPrint("HomeScreen: Already on tab $index or it's a direct action tab. No change in selectedIndex needed.");
+         if (index == 2) { 
+            _scanQrCode();
+            debugPrint("HomeScreen: Scan action initiated.");
+         }
+        return; 
+    }
+    
     if (index == 2) { 
       _scanQrCode();
+      debugPrint("HomeScreen: Scan action initiated.");
       return; 
     }
-    if (mounted) {
-      setState(() {
-        _selectedIndex = index;
-      });
+    
+    setState(() {
+      _selectedIndex = index;
+    });
+
+    if (index == 0 && (_isHomeDataLoading || _userData == null)) { // Reload home data if switching to home and it's loading or not loaded
+        debugPrint("HomeScreen: Switched to Home tab (index 0), calling _loadHomeData.");
+        _loadHomeData();
     }
   }
 
@@ -380,10 +407,113 @@ class _HomeScreenState extends State<HomeScreen> {
         MaterialPageRoute(builder: (context) => const SelectCategoryScreen()),
       ).then((valueFromNextScreen) {
         if (valueFromNextScreen == true || valueFromNextScreen == null) { 
-            _fetchUpcomingAppointments();
+            if(_selectedIndex == 0) { // Only refresh if home tab is active
+              _fetchUpcomingAppointmentsInternal().then((appointments) { // Use internal version
+                if(mounted && appointments != null) {
+                  setState(() => _upcomingAppointments = appointments);
+                }
+              });
+            }
         }
       });
     }
+  }
+
+  Widget _buildHomeTabContent() {
+    debugPrint("HomeScreen: _buildHomeTabContent called. _isHomeDataLoading: $_isHomeDataLoading, _userData is null: ${_userData == null}, _appBarDisplayName: $_appBarDisplayName");
+    
+    return CustomScrollView(
+        slivers: <Widget>[
+          SliverAppBar(
+            expandedHeight: 100.0,
+            floating: false,
+            pinned: true,
+            backgroundColor: const Color(0xFF6EB6B4),
+            elevation: 2, 
+            flexibleSpace: FlexibleSpaceBar(
+              titlePadding: const EdgeInsets.only(left: 16.0, bottom: 16.0, right: 50.0), 
+              title: Text(
+                'Hi, $_appBarDisplayName', 
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22.0, 
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis, 
+              ),
+              background: Container( 
+                  decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                      colors: [Color(0xFF6EB6B4), Color(0xFF4BA5A1)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                  ),
+                  ),
+              ),
+            ),
+            actions: [
+              IconButton( 
+                icon: const Icon(Icons.construction, color: Colors.yellow),
+                tooltip: 'Seed Data (Admin)',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AdminDataSeederScreen()),
+                  );
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.logout, color: Colors.white),
+                tooltip: 'Logout',
+                onPressed: _logoutUser,
+              ),
+            ],
+          ),
+          _isHomeDataLoading 
+              ? const SliverFillRemaining(
+                  key: ValueKey('homeLoaderSliver'), 
+                  child: Center(
+                    child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080)))
+                  ),
+                )
+              : SliverList( 
+                  key: const ValueKey('homeContentSliver'), 
+                  delegate: SliverChildListDelegate(
+                    [
+                      if (_userData == null) 
+                          const Padding( 
+                            padding: EdgeInsets.all(20.0),
+                            child: Center(child: Text("Could not load user details. Pull to refresh.", style: TextStyle(color: Colors.grey))),
+                          )
+                      else 
+                          _buildUserInfoCard(_userData), 
+                      
+                      _buildActionButtonsGrid(),
+                      _buildPrescriptionSection(), 
+                      _buildAppointmentsSection(), 
+                      const SizedBox(height: 20), 
+                    ],
+                  ),
+                ),
+        ],
+      );
+  }
+
+  Widget _buildRecordsTabContent() {
+    return Scaffold( 
+      appBar: AppBar(
+        title: const Text("My Records", style: TextStyle(color: Color(0xFF00695C))),
+        backgroundColor: Colors.white,
+        elevation: 1.0,
+        automaticallyImplyLeading: false, 
+      ),
+      body: const Center(
+        child: Text(
+          "Records Screen - Content Here",
+          style: TextStyle(fontSize: 18, color: Colors.grey),
+        ),
+      ),
+    );
   }
   
   @override
@@ -393,79 +523,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       body: RefreshIndicator( 
-        onRefresh: _loadAllData, 
+        onRefresh: _loadHomeData, 
         color: selectedColor, 
-        child: CustomScrollView(
-          slivers: <Widget>[
-            SliverAppBar(
-              expandedHeight: 100.0,
-              floating: false,
-              pinned: true,
-              backgroundColor: const Color(0xFF6EB6B4),
-              elevation: 2, 
-              flexibleSpace: FlexibleSpaceBar(
-                titlePadding: const EdgeInsets.only(left: 16.0, bottom: 16.0, right: 50.0), 
-                title: Text(
-                  'Hi, $_appBarDisplayName', // Corrected: Removed unnecessary braces
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22.0, 
-                    fontWeight: FontWeight.bold,
-                  ),
-                  overflow: TextOverflow.ellipsis, 
-                ),
-                background: Container( 
-                    decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                        colors: [Color(0xFF6EB6B4), Color(0xFF4BA5A1)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                    ),
-                    ),
-                ),
-              ),
-              // In home_screen.dart, inside SliverAppBar -> actions:
-actions: [
-  IconButton( // Temporary button for seeding
-    icon: const Icon(Icons.construction, color: Colors.yellow),
-    tooltip: 'Seed Data (Admin)',
-    onPressed: () {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const AdminDataSeederScreen()),
-      );
-    },
-  ),
-  IconButton(
-    icon: const Icon(Icons.logout, color: Colors.white),
-    tooltip: 'Logout',
-    onPressed: _logoutUser,
-  ),
-],
-              
-            ),
-            (_isLoadingUserData && _userData == null) 
-                ? const SliverFillRemaining(
-                    child: Center(
-                      child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080)))
-                    ),
-                  )
-                : SliverList(
-                    delegate: SliverChildListDelegate(
-                      [
-                        if (!_isLoadingUserData && _userData == null) 
-                            const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("Could not load user details. Pull to refresh.", style: TextStyle(color: Colors.grey))))
-                        else if (_userData != null) 
-                            _buildUserInfoCard(_userData), 
-                        
-                        _buildActionButtonsGrid(),
-                        _buildPrescriptionSection(),
-                        _buildAppointmentsSection(),
-                        const SizedBox(height: 20), 
-                      ],
-                    ),
-                  ),
-          ],
+        child: IndexedStack( 
+          index: _selectedIndex,
+          children: _widgetOptions.map((builder) => builder()).toList(),
         ),
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -484,7 +546,7 @@ actions: [
           ),
           BottomNavigationBarItem(
             icon: InkWell( 
-              onTap: _scanQrCode, 
+              onTap: () => _onItemTapped(2), 
               customBorder: const CircleBorder(),
               child: Padding( 
                 padding: const EdgeInsets.all(8.0),
@@ -526,13 +588,7 @@ actions: [
 
   Widget _buildUserInfoCard(Map<String, dynamic>? userData) { 
     if (userData == null) { 
-      return const Card(
-        margin: EdgeInsets.all(16.0),
-        child: Padding(
-          padding: EdgeInsets.all(20.0),
-          child: Center(child: Text("User information not available.")),
-        ),
-      );
+      return const SizedBox.shrink(); 
     }
     
     String name = userData['displayName'] ?? 'N/A'; 
@@ -700,12 +756,19 @@ actions: [
   }
 
   Widget _buildPrescriptionSection() {
-    if (_isLoadingPrescription && _latestPrescription == null) {
-      return const Center(child: Padding(padding: EdgeInsets.all(20.0), child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080)))));
+    if (_isHomeDataLoading && _latestPrescription == null) { 
+      return const SizedBox.shrink(); 
     }
+    if (_latestPrescription == null && !_isHomeDataLoading) { 
+        return const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+          child: Text("No prescriptions available.", style: TextStyle(color: Colors.grey)),
+        );
+    }
+    if (_latestPrescription == null) return const SizedBox.shrink(); 
     
     String prescriptionDetails;
-    if (_latestPrescription != null && _latestPrescription!.exists) {
+    if (_latestPrescription!.exists) { 
       Map<String, dynamic> data = _latestPrescription!.data() as Map<String, dynamic>;
       String doctorName = data['doctorName'] ?? 'N/A';
       String dateIssuedFormatted = "N/A";
@@ -774,9 +837,46 @@ actions: [
   }
 
   Widget _buildAppointmentsSection() {
-    if (_isLoadingAppointments && _upcomingAppointments.isEmpty) {
-      return const Center(child: Padding(padding: EdgeInsets.all(20.0),child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080)))));
+    if (_isHomeDataLoading && _upcomingAppointments.isEmpty) { 
+      return const SizedBox.shrink(); 
     }
+     if (_upcomingAppointments.isEmpty && !_isHomeDataLoading) { 
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical:10.0),
+          child: Column(
+             crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Upcoming Appointments', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Color(0xFF00695C))),
+                  InkWell(
+                    onTap: _addNewAppointmentAction, 
+                    customBorder: const CircleBorder(),
+                    child: Tooltip(
+                      message: 'Add New Appointment',
+                      child: _buildCompositeAppointmentIcon(
+                        outerColor: Colors.teal.shade300, innerColor: const Color(0xFF008080), circleDiameter: 38, innerIconSize: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Card( 
+                elevation: 0,
+                color: Colors.grey[100],
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
+                  child: Center(child: Text("No upcoming appointments. Tap '+' to book.", style: TextStyle(color: Colors.grey, fontSize: 15))),
+                ),
+              )
+            ],
+          ),
+        );
+    }
+    if (_upcomingAppointments.isEmpty) return const SizedBox.shrink(); 
     
     return Padding(
       padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 16.0, top: 0.0),
@@ -800,62 +900,52 @@ actions: [
             ],
           ),
           const SizedBox(height: 12),
-          _upcomingAppointments.isEmpty && !_isLoadingAppointments
-              ? Card( 
-                  elevation: 0,
-                  color: Colors.grey[100],
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
-                    child: Center(child: Text("No upcoming appointments. Tap '+' to book.", style: TextStyle(color: Colors.grey, fontSize: 15))),
-                  ),
-                )
-              : Column(
-                  children: _upcomingAppointments.map((doc) {
-                    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-                    String name = data['doctorName'] ?? data['labTestName'] ?? data['category'] ?? 'Appointment'; 
-                    String dateTimeStr = 'Date/Time N/A';
-                    String status = data['status'] ?? 'N/A'; 
+          Column( 
+              children: _upcomingAppointments.map((doc) {
+                Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+                String name = data['doctorName'] ?? data['labTestName'] ?? data['category'] ?? 'Appointment'; 
+                String dateTimeStr = 'Date/Time N/A';
+                String status = data['status'] ?? 'N/A'; 
 
-                    if (data['dateTimeFull'] != null && data['dateTimeFull'] is Timestamp) {
-                      DateTime dt = (data['dateTimeFull'] as Timestamp).toDate();
-                      dateTimeStr = DateFormat('EEE, dd MMM, yy  •  hh:mm a').format(dt); 
-                    }
+                if (data['dateTimeFull'] != null && data['dateTimeFull'] is Timestamp) {
+                  DateTime dt = (data['dateTimeFull'] as Timestamp).toDate();
+                  dateTimeStr = DateFormat('EEE, dd MMM, yy  •  hh:mm a').format(dt); 
+                }
 
-                    Widget profileIconWidget = _buildCompositeProfileIcon(
-                        color: const Color(0xFF008080), shoulderWidth: 22, shoulderHeight: 11, headDiameter: 12, headOffsetY: -2.5);
-                    
-                    if (data['category'] == 'Lab Test' || data['labTestName'] != null) { 
-                        profileIconWidget = CircleAvatar(
-                        backgroundColor: Colors.teal.withAlpha(30),
-                        child: SvgPicture.asset('assets/icons/labs_icon.svg', width: 22, height: 22, colorFilter: const ColorFilter.mode(Color(0xFF008080), BlendMode.srcIn)),
-                        );
-                    } else if (data['appointmentType'] == 'video') { 
-                        profileIconWidget = CircleAvatar(
-                        backgroundColor: Colors.teal.withAlpha(30),
-                        child: SvgPicture.asset('assets/icons/video_icon.svg', width: 22, height: 22, colorFilter: const ColorFilter.mode(Color(0xFF008080), BlendMode.srcIn)),
-                        );
-                    }
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10.0),
-                      child: _buildAppointmentItem(
-                        profileWidget: profileIconWidget,
-                        name: name,
-                        dateTime: dateTimeStr,
-                        status: status, 
-                        onTap: () {
-                          if(mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Tapped on ${doc.id} (View Details - Not Implemented)')),
-                            );
-                          }
-                        }
-                      ),
+                Widget profileIconWidget = _buildCompositeProfileIcon(
+                    color: const Color(0xFF008080), shoulderWidth: 22, shoulderHeight: 11, headDiameter: 12, headOffsetY: -2.5);
+                
+                if (data['category'] == 'Lab Test' || data['labTestName'] != null) { 
+                    profileIconWidget = CircleAvatar(
+                    backgroundColor: Colors.teal.withAlpha(30),
+                    child: SvgPicture.asset('assets/icons/labs_icon.svg', width: 22, height: 22, colorFilter: const ColorFilter.mode(Color(0xFF008080), BlendMode.srcIn)),
                     );
-                  }).toList(),
-                ),
-          if (!_isLoadingAppointments && _upcomingAppointments.isNotEmpty)
+                } else if (data['appointmentType'] == 'video') { 
+                    profileIconWidget = CircleAvatar(
+                    backgroundColor: Colors.teal.withAlpha(30),
+                    child: SvgPicture.asset('assets/icons/video_icon.svg', width: 22, height: 22, colorFilter: const ColorFilter.mode(Color(0xFF008080), BlendMode.srcIn)),
+                    );
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10.0),
+                  child: _buildAppointmentItem(
+                    profileWidget: profileIconWidget,
+                    name: name,
+                    dateTime: dateTimeStr,
+                    status: status, 
+                    onTap: () {
+                      if(mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Tapped on ${doc.id} (View Details - Not Implemented)')),
+                        );
+                      }
+                    }
+                  ),
+                );
+              }).toList(),
+            ),
+          if (_upcomingAppointments.isNotEmpty) 
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(

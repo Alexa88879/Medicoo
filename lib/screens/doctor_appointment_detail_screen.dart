@@ -172,10 +172,32 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
         _isBooking = true;
       });
 
-      // Format date in UTC
-// Removed unused variable 'now'
       String formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate!);
       
+      // Check for existing appointments at the same time
+      QuerySnapshot existingAppointments = await _firestore
+          .collection('appointments')
+          .where('userId', isEqualTo: _auth.currentUser!.uid)
+          .where('appointmentDate', isEqualTo: formattedDate)
+          .where('appointmentTime', isEqualTo: _selectedTimeSlot)
+          .where('status', isEqualTo: 'booked')
+          .get();
+
+      if (existingAppointments.docs.isNotEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('You already have an appointment scheduled for this time slot'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          setState(() {
+            _isBooking = false;
+          });
+        }
+        return;
+      }
+
       // Create appointment ID with sanitized time slot
       String sanitizedTimeSlot = _selectedTimeSlot!.replaceAll(' ', '_').replaceAll(':', '_');
       String appointmentId = '${widget.doctor.uid}_${_auth.currentUser!.uid}_${formattedDate}_$sanitizedTimeSlot';

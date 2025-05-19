@@ -61,10 +61,28 @@ service cloud.firestore {
           'appointmentId', 'userId', 'userName', 'doctorId', 'doctorName',
           'doctorSpeciality', 'appointmentDate', 'appointmentTime',
           'dateTimeFull', 'category', 'status', 'createdAt', 'notes',
-          'updatedAt'  // Added this field as it's used in the app
+          'updatedAt'
         ];
         return data.keys().hasAll(expectedFields) && data.keys().hasOnly(expectedFields);
       }
+
+      // Function to check if user already has an appointment at the same time
+      function hasNoConflictingAppointment() {
+        let existingAppointments = getAfter(/databases/$(database)/documents/appointments)
+          .where('userId', '==', request.resource.data.userId)
+          .where('appointmentDate', '==', request.resource.data.appointmentDate)
+          .where('appointmentTime', '==', request.resource.data.appointmentTime)
+          .where('status', '==', 'booked');
+        return existingAppointments.size() == 0;
+      }
+
+      // Modified appointment creation rules
+      allow create: if request.auth != null &&
+                   request.auth.uid == request.resource.data.userId &&
+                   isAllowedToCreateAppointmentFields(request.resource.data) &&
+                   isValidNewAppointmentData(request.resource.data, appointmentId) &&
+                   isFutureAppointment(request.resource.data) &&
+                   hasNoConflictingAppointment();
 
       // Function to validate appointment data
       // Modified appointment creation validation
