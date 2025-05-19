@@ -1,7 +1,8 @@
+// lib/screens/doctor_appointment_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart'; // For date formatting
 import '../models/doctor_model.dart'; // Ensure this path is correct
 
 class DoctorAppointmentDetailScreen extends StatefulWidget {
@@ -10,360 +11,410 @@ class DoctorAppointmentDetailScreen extends StatefulWidget {
   const DoctorAppointmentDetailScreen({super.key, required this.doctor});
 
   @override
-  State<DoctorAppointmentDetailScreen> createState() => _DoctorAppointmentDetailScreenState();
+  State<DoctorAppointmentDetailScreen> createState() =>
+      _DoctorAppointmentDetailScreenState();
 }
 
-class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailScreen> {
+class _DoctorAppointmentDetailScreenState
+    extends State<DoctorAppointmentDetailScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   DateTime? _selectedDate;
   String? _selectedTimeSlot;
-  final TextEditingController _dateController = TextEditingController();
-  // final TextEditingController _reasonController = TextEditingController(); // Uncomment if you add reason field
+  bool _isLoading = false; // General loading state for the screen or specific parts
+  bool _isBooking = false; // Specific loading state for the booking process
+  String? _currentUserName;
 
-  bool _isBooking = false;
-  User? _currentUser;
-  Map<String, dynamic>? _currentUserData;
-
+  // Example static time slots as per PDF - can be made dynamic later
   final List<String> _timeSlots = [
-    '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM',
-    '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM', '02:00 PM', '02:30 PM',
-    '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM', '05:00 PM'
+    '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM',
+    '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM',
+    '01:00 PM', '01:30 PM', '02:00 PM', '02:30 PM',
+    '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM',
+    '05:00 PM'
   ];
 
-  List<String> _bookedTimeSlots = [];
-  bool _isLoadingTimeSlots = false;
+  List<String> _availableTimeSlots = [];
 
   @override
   void initState() {
     super.initState();
-    _currentUser = _auth.currentUser;
-    if (_currentUser == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          Navigator.of(context).pop();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('You need to be logged in.')),
-          );
-        }
-      });
-    } else {
-      _fetchCurrentUserDetails();
-    }
+    _fetchCurrentUserName();
+    _selectedDate = DateTime.now(); // Default to today
+    _filterAvailableSlotsForSelectedDate(); // Initial filter
   }
 
-  Future<void> _fetchCurrentUserDetails() async {
-    if (_currentUser != null) {
+  Future<void> _fetchCurrentUserName() async {
+    User? currentUser = _auth.currentUser;
+    if (currentUser != null) {
       try {
-        DocumentSnapshot userDoc = await _firestore.collection('users').doc(_currentUser!.uid).get();
-        if (userDoc.exists && mounted) {
+        DocumentSnapshot userDoc = await _firestore.collection('users').doc(currentUser.uid).get();
+        if (mounted) { // Check mounted before setState
           setState(() {
-            _currentUserData = userDoc.data() as Map<String, dynamic>?;
+            if (userDoc.exists && userDoc.data() != null) {
+              _currentUserName = (userDoc.data() as Map<String, dynamic>)['displayName'] ?? currentUser.displayName ?? 'User';
+            } else {
+              _currentUserName = currentUser.displayName ?? currentUser.email ?? 'User';
+            }
           });
-        } else if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not find your user details.')),
-          );
         }
       } catch (e) {
-        debugPrint("Error fetching current user details: $e");
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error loading your details: ${e.toString()}')),
-          );
-        }
+        debugPrint("Error fetching current user's name: $e");
+         if (mounted) { // Check mounted before setState
+            setState(() {
+              _currentUserName = currentUser.displayName ?? currentUser.email ?? 'User'; // Fallback
+            });
+         }
       }
     }
   }
-
-  Future<void> _fetchBookedTimeSlots(DateTime date) async {
-    if (!mounted) return;
-    setState(() {
-      _isLoadingTimeSlots = true;
-      _bookedTimeSlots = []; 
-    });
-
-    try {
-      DateTime startOfDay = DateTime(date.year, date.month, date.day, 0, 0, 0);
-      DateTime endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
-
-      QuerySnapshot snapshot = await _firestore
-          .collection('appointments')
-          .where('doctorId', isEqualTo: widget.doctor.uid)
-          .where('dateTime', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-          .where('dateTime', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
-          .where('status', whereIn: ['scheduled', 'confirmed'])
-          .get();
-
-      if (mounted) {
-        setState(() {
-          _bookedTimeSlots = snapshot.docs
-              .map((doc) => doc['timeSlot'] as String?)
-              .where((slot) => slot != null)
-              .cast<String>()
-              .toList();
-          _isLoadingTimeSlots = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoadingTimeSlots = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error fetching booked slots: ${e.toString()}')),
-        );
-      }
-      debugPrint("Error fetching booked slots: $e");
-    }
-  }
-
 
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate ?? DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 90)),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF008080),
-              onPrimary: Colors.white,
-              onSurface: Colors.black,
-            ),
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(foregroundColor: const Color(0xFF008080)),
-            ),
-          ),
-          child: child!,
-        );
-      },
+      firstDate: DateTime.now(), 
+      lastDate: DateTime.now().add(const Duration(days: 90)), 
     );
     if (picked != null && picked != _selectedDate) {
-      if (mounted) {
+      if (mounted) { // Check mounted before setState
         setState(() {
           _selectedDate = picked;
-          _dateController.text = DateFormat('EEE, dd MMM, yyyy').format(picked);
           _selectedTimeSlot = null; 
         });
-        _fetchBookedTimeSlots(picked); 
       }
+      _filterAvailableSlotsForSelectedDate();
     }
   }
   
-  TimeOfDay _parseTimeSlot(String timeSlot) {
-    final format = DateFormat("hh:mm a");
-    final dt = format.parse(timeSlot);
-    return TimeOfDay.fromDateTime(dt);
+  Future<void> _filterAvailableSlotsForSelectedDate() async {
+    if (_selectedDate == null) {
+      if (mounted) setState(() => _availableTimeSlots = []);
+      return;
+    }
+
+    if (mounted) setState(() => _isLoading = true);
+
+    List<String> generalDaySlots = [];
+    if (widget.doctor.availableSlots != null) {
+      String dayOfWeek = DateFormat('EEEE').format(_selectedDate!).toLowerCase(); 
+      generalDaySlots = widget.doctor.availableSlots![dayOfWeek] ?? _timeSlots; 
+    } else {
+      generalDaySlots = List.from(_timeSlots); 
+    }
+    
+    try {
+      final String formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate!);
+      QuerySnapshot bookedSlotsSnapshot = await _firestore
+          .collection('appointments')
+          .where('doctorId', isEqualTo: widget.doctor.uid)
+          .where('appointmentDate', isEqualTo: formattedDate)
+          .where('status', whereIn: ['booked', 'confirmed']) 
+          .get();
+
+      List<String> bookedTimes = bookedSlotsSnapshot.docs
+          .map((doc) => (doc.data() as Map<String, dynamic>)['appointmentTime'] as String)
+          .toList();
+      
+      if (mounted) {
+        setState(() {
+          _availableTimeSlots = generalDaySlots.where((slot) => !bookedTimes.contains(slot)).toList();
+          _isLoading = false;
+        });
+      }
+
+    } catch (e) {
+      debugPrint("Error fetching booked slots: $e");
+      if (mounted) { // Guard context access
+         ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading available slots: ${e.toString()}')),
+        );
+        setState(() {
+          _availableTimeSlots = List.from(generalDaySlots); 
+          _isLoading = false;
+        });
+      }
+    }
   }
 
-  Future<void> _confirmAndBookAppointment() async {
+
+  Future<void> _bookAppointment() async {
     if (_selectedDate == null || _selectedTimeSlot == null) {
-      if (mounted) {
+      if (mounted) { // Guard context access
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please select a date and a time slot.')),
-        );
-      }
-      return;
-    }
-    if (_currentUser == null || _currentUserData == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('User information not available. Please log in again.')),
+          const SnackBar(content: Text('Please select a date and time slot.')),
         );
       }
       return;
     }
 
-    if (mounted) {
-      setState(() { _isBooking = true; });
+    User? currentUser = _auth.currentUser;
+    if (currentUser == null) {
+      if (mounted) { // Guard context access
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You need to be logged in to book.')),
+        );
+      }
+      return;
     }
+     if (_currentUserName == null) {
+      if (mounted) { // Guard context access
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Fetching user details, please wait...')),
+        );
+      }
+      await _fetchCurrentUserName(); 
+      if(_currentUserName == null) { // Re-check after attempting to fetch
+         if (mounted) { // Guard context access
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Could not fetch user details. Please try again.')),
+            );
+         }
+        return;
+      }
+    }
+
+    if (mounted) setState(() => _isBooking = true); // Use _isBooking for the button loader
 
     try {
-      TimeOfDay parsedTime = _parseTimeSlot(_selectedTimeSlot!);
-      DateTime finalDateTime = DateTime(
+      final String datePart = DateFormat('yyyy-MM-dd').format(_selectedDate!);
+      final timeParts = _selectedTimeSlot!.split(' '); 
+      final hourMinute = timeParts[0].split(':'); 
+      int hour = int.parse(hourMinute[0]);
+      final int minute = int.parse(hourMinute[1]);
+
+      if (timeParts[1].toUpperCase() == 'PM' && hour != 12) {
+        hour += 12;
+      } else if (timeParts[1].toUpperCase() == 'AM' && hour == 12) { 
+        hour = 0;
+      }
+
+      final DateTime fullDateTime = DateTime(
         _selectedDate!.year,
         _selectedDate!.month,
         _selectedDate!.day,
-        parsedTime.hour,
-        parsedTime.minute,
+        hour,
+        minute,
       );
+      final Timestamp appointmentTimestamp = Timestamp.fromDate(fullDateTime);
 
-      if (finalDateTime.isBefore(DateTime.now().subtract(const Duration(minutes: 1)))) {
-         if (mounted) {
+      QuerySnapshot existingAppointments = await _firestore
+          .collection('appointments')
+          .where('doctorId', isEqualTo: widget.doctor.uid)
+          .where('dateTimeFull', isEqualTo: appointmentTimestamp)
+          .where('status', whereIn: ['booked', 'confirmed'])
+          .limit(1)
+          .get();
+
+      if (existingAppointments.docs.isNotEmpty) {
+        if (mounted) { // Guard context access
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Cannot book appointments in the past.')),
+            const SnackBar(content: Text('This slot was just booked. Please select another.')),
           );
-          setState(() => _isBooking = false);
         }
+        _filterAvailableSlotsForSelectedDate(); 
+        if (mounted) setState(() => _isBooking = false);
         return;
       }
 
-      // Match the required fields from the security rules
-      await _firestore.collection('appointments').add({
-        'patientUid': _currentUser!.uid,
-        'patientName': _currentUserData!['displayName'] ?? _currentUserData!['fullName'] ?? 'N/A',
+      DocumentReference appointmentRef = _firestore.collection('appointments').doc();
+      await appointmentRef.set({
+        'appointmentId': appointmentRef.id, 
+        'userId': currentUser.uid,
+        'userName': _currentUserName, 
         'doctorId': widget.doctor.uid,
         'doctorName': widget.doctor.name,
-        'doctorSpecialization': widget.doctor.specialization,
-        'dateTime': Timestamp.fromDate(finalDateTime),
-        'timeSlot': _selectedTimeSlot,
-        'status': 'scheduled',
-        'createdAt': Timestamp.now(),
-        'appointmentType': 'consultation',
-        // Add any missing required fields from security rules
-        'reasonForVisit': 'Not specified' // Adding this as it's mentioned in the rules
+        'doctorSpeciality': widget.doctor.specialization,
+        'appointmentDate': datePart, 
+        'appointmentTime': _selectedTimeSlot,
+        'dateTimeFull': appointmentTimestamp, 
+        'category': widget.doctor.specialization, 
+        'status': 'booked', 
+        'createdAt': FieldValue.serverTimestamp(),
+        'notes': '', 
       });
 
-      if (mounted) {
+      if (mounted) { // Guard context access
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Appointment booked successfully!'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Appointment booked successfully!')),
         );
-        int count = 0;
-        Navigator.of(context).popUntil((_) => count++ >= 2); 
+        Navigator.of(context).popUntil((route) => route.isFirst); 
       }
     } catch (e) {
-      if (mounted) {
+      debugPrint("Error booking appointment: $e");
+      if (mounted) { // Guard context access
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to book appointment: ${e.toString()}')),
         );
       }
-      debugPrint("Error booking appointment: $e");
     } finally {
       if (mounted) {
-        setState(() { _isBooking = false; });
+        setState(() => _isBooking = false);
       }
     }
   }
 
   @override
-  void dispose() {
-    _dateController.dispose();
-    // _reasonController.dispose(); 
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    String qualificationsText = (widget.doctor.qualifications != null && widget.doctor.qualifications!.isNotEmpty)
-                                ? widget.doctor.qualifications!.join(', ')
-                                : 'Not specified';
+    final Doctor doctor = widget.doctor;
+    String qualificationsText = (doctor.qualifications != null && doctor.qualifications!.isNotEmpty)
+        ? doctor.qualifications!.join(', ')
+        : 'Not specified';
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Book Appointment', style: TextStyle(color: Colors.white)),
+        title: Text(doctor.name, style: const TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF6EB6B4),
         iconTheme: const IconThemeData(color: Colors.white),
-        elevation: 0,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 40,
-                  backgroundColor: Colors.grey.shade200,
-                  backgroundImage: widget.doctor.profilePictureUrl != null && widget.doctor.profilePictureUrl!.isNotEmpty
-                      ? NetworkImage(widget.doctor.profilePictureUrl!)
-                      : null,
-                  child: widget.doctor.profilePictureUrl == null || widget.doctor.profilePictureUrl!.isEmpty
-                      ? Icon(Icons.person, size: 40, color: Theme.of(context).primaryColor)
-                      : null,
+            Card(
+              elevation: 3,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 40,
+                      backgroundColor: Colors.grey.shade200,
+                      backgroundImage: doctor.imageUrl != null && doctor.imageUrl!.isNotEmpty
+                          ? NetworkImage(doctor.imageUrl!)
+                          : null,
+                      child: doctor.imageUrl == null || doctor.imageUrl!.isEmpty
+                          ? Icon(Icons.person, size: 40, color: Theme.of(context).primaryColor)
+                          : null,
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(doctor.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                          Text(doctor.specialization, style: TextStyle(fontSize: 16, color: Colors.grey[700])), // Corrected
+                          if (qualificationsText != 'Not specified')
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Text(qualificationsText, style: TextStyle(fontSize: 14, color: Colors.grey[600])), // Corrected
+                            ),
+                          if (doctor.yearsOfExperience != null)
+                             Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Text('${doctor.yearsOfExperience} years experience', style: TextStyle(fontSize: 14, color: Colors.grey[600])), // Corrected
+                            ),
+                           if (doctor.consultationFee != null)
+                             Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Text('Fee: ₹${doctor.consultationFee?.toStringAsFixed(0)}', style: const TextStyle(fontSize: 14, color: Colors.teal, fontWeight: FontWeight.w500)),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(widget.doctor.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF004D40))),
-                      Text(widget.doctor.specialization, style: TextStyle(fontSize: 16, color: Colors.grey[700])),
-                      Text(qualificationsText, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
-                    ],
-                  ),
-                ),
-              ],
+              ),
             ),
-            const SizedBox(height: 24),
-            const Text('Select Date', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF00695C))),
+            const SizedBox(height: 20),
+            if(doctor.bio != null && doctor.bio!.isNotEmpty) ...[
+              const Text('About Doctor', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text(doctor.bio!, style: const TextStyle(fontSize: 15, height: 1.4)),
+              const SizedBox(height: 20),
+            ],
+
+            const Text('Select Date', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             GestureDetector(
               onTap: () => _selectDate(context),
-              child: AbsorbPointer(
-                child: TextFormField(
-                  controller: _dateController,
-                  readOnly: true,
-                  decoration: InputDecoration(
-                    hintText: 'DD MMMM yyyy',
-                    suffixIcon: const Icon(Icons.arrow_drop_down, color: Color(0xFF008080)),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
-                    filled: true,
-                    fillColor: Colors.grey[100],
-                     contentPadding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0),
-                  ),
-                   validator: (value) => value == null || value.isEmpty ? 'Please select a date' : null,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade400),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _selectedDate == null
+                          ? 'Tap to select a date'
+                          : DateFormat('EEE, dd MMM, yyyy').format(_selectedDate!), // Corrected format
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    const Icon(Icons.calendar_today, color: Colors.teal),
+                  ],
                 ),
               ),
             ),
+            const SizedBox(height: 20),
 
-            const SizedBox(height: 24),
-            const Text('Select Time Slot', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF00695C))),
-            const SizedBox(height: 12),
-            if (_selectedDate == null)
-              Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16.0),
-                  child: Text('Please select a date first to see available time slots.', style: TextStyle(color: Colors.grey[600]))
-                )
-            else if (_isLoadingTimeSlots)
-              const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080)))))
-            else
-              Wrap(
-                spacing: 8.0,
-                runSpacing: 8.0,
-                children: _timeSlots.map((slot) {
-                  bool isSelected = _selectedTimeSlot == slot;
-                  bool isBooked = _bookedTimeSlots.contains(slot);
-
-                  return ChoiceChip(
-                    label: Text(slot),
-                    selected: isSelected,
-                    selectedColor: const Color(0xFF008080),
-                    labelStyle: TextStyle(
-                      color: isSelected ? Colors.white : (isBooked ? Colors.grey.shade500 : Colors.black87),
-                      decoration: isBooked ? TextDecoration.lineThrough : null,
-                    ),
-                    backgroundColor: isBooked ? Colors.grey.shade300 : Colors.grey.shade100,
-                    disabledColor: Colors.grey.shade300, // For booked slots
-                    onSelected: isBooked ? null : (selected) {
-                      setState(() {
-                        _selectedTimeSlot = selected ? slot : null;
-                      });
-                    },
-                  );
-                }).toList(),
-              ),
+            const Text('Select Time Slot', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            _isLoading // General loading for slots
+                ? const Center(child: Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080))),
+                  ))
+                : _availableTimeSlots.isEmpty
+                    ? Center(child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(
+                          _selectedDate == null ? 'Please select a date first.' : 'No slots available for this date.',
+                           style: const TextStyle(color: Colors.grey, fontSize: 15)
+                        ),
+                      ))
+                    : GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3, 
+                          childAspectRatio: 2.8, 
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                        ),
+                        itemCount: _availableTimeSlots.length,
+                        itemBuilder: (context, index) {
+                          final slot = _availableTimeSlots[index];
+                          final isSelected = slot == _selectedTimeSlot;
+                          return ElevatedButton(
+                            onPressed: () {
+                              if (mounted) setState(() => _selectedTimeSlot = slot);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isSelected ? Colors.teal : Colors.grey.shade200,
+                              foregroundColor: isSelected ? Colors.white : Colors.black87,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              elevation: isSelected ? 2 : 0,
+                            ),
+                            child: Text(slot),
+                          );
+                        },
+                      ),
             const SizedBox(height: 30),
+
             SizedBox(
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
+                onPressed: (_isBooking || _selectedDate == null || _selectedTimeSlot == null) ? null : _bookAppointment,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF008080),
+                  backgroundColor: Colors.teal,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                onPressed: _isBooking ? null : _confirmAndBookAppointment,
-                child: _isBooking
-                    ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
-                    : const Text('Confirm'),
+                child: _isBooking // Use _isBooking for the button's loading state
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('Confirm Appointment', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
               ),
             ),
-             const SizedBox(height: 20), // Extra space at the bottom
+            const SizedBox(height: 20),
           ],
         ),
       ),

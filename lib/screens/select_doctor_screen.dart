@@ -1,12 +1,11 @@
+//lib\screens\select_doctor_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'doctor_appointment_detail_screen.dart'; // For navigation to the next screen
-import '../models/doctor_model.dart'; // <<--- CORRECTED IMPORT
-
-// The Doctor class definition is REMOVED from this file as it's now imported.
+import 'doctor_appointment_detail_screen.dart'; 
+import '../models/doctor_model.dart'; // Ensure this path is correct and doctor_model.dart is updated
 
 class SelectDoctorScreen extends StatefulWidget {
-  final String specialization;
+  final String specialization; // This should match the 'speciality' field in Firestore
   const SelectDoctorScreen({super.key, required this.specialization});
 
   @override
@@ -15,6 +14,7 @@ class SelectDoctorScreen extends StatefulWidget {
 
 class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
   late Future<List<Doctor>> _doctorsFuture;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
@@ -24,27 +24,21 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
 
   Future<List<Doctor>> _fetchDoctorsBySpecialization(String specialization) async {
     try {
-      QuerySnapshot snapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('role', isEqualTo: 'doctor')
-          .where('specialization', isEqualTo: specialization)
-          .where('isActive', isEqualTo: true)
+      // Fetching documents as Map<String, dynamic>
+      QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
+          .collection('doctors') 
+          .where('speciality', isEqualTo: specialization) // Querying by 'speciality'
+          .where('isAvailable', isEqualTo: true) // Querying by 'isAvailable'
           .get();
 
       if (snapshot.docs.isEmpty) {
         return [];
       }
 
-      return snapshot.docs.map((doc) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        return Doctor(
-          uid: doc.id,
-          name: data['displayName'] ?? data['fullName'] ?? 'N/A',
-          specialization: data['specialization'] ?? 'N/A',
-          profilePictureUrl: data['profilePictureUrl'],
-          qualifications: data['qualifications'] as List<dynamic>?,
-        );
-      }).toList();
+      // Use the factory constructor from the Doctor model for mapping
+      // This ensures that field names and types are handled as defined in the model
+      return snapshot.docs.map((doc) => Doctor.fromFirestore(doc)).toList();
+
     } catch (e) {
       debugPrint("Error fetching doctors by specialization: $e");
       if(mounted) {
@@ -52,7 +46,7 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
           SnackBar(content: Text('Failed to load doctors: ${e.toString()}')),
         );
       }
-      return [];
+      return []; 
     }
   }
 
@@ -61,7 +55,7 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Doctors for ${widget.specialization}', style: const TextStyle(color: Colors.white)),
-        backgroundColor: const Color(0xFF6EB6B4), // Theme color
+        backgroundColor: const Color(0xFF6EB6B4), 
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
       ),
@@ -72,7 +66,16 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
             return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080))));
           }
           if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  'Could not load doctors. Please try again later.\nError: ${snapshot.error}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              )
+            );
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return Center(
@@ -92,9 +95,10 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
             itemCount: doctors.length,
             itemBuilder: (context, index) {
               final doctor = doctors[index];
+              // Qualifications are List<String>? directly from the model via fromFirestore factory
               String qualificationsText = (doctor.qualifications != null && doctor.qualifications!.isNotEmpty)
-                                        ? doctor.qualifications!.join(', ')
-                                        : 'Not specified'; // Changed from 'N/A' to 'Not specified'
+                                          ? doctor.qualifications!.join(', ')
+                                          : 'Not specified';
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                 elevation: 2.0,
@@ -103,22 +107,25 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
                   leading: CircleAvatar(
                     radius: 30,
                     backgroundColor: Colors.grey.shade200,
-                    backgroundImage: doctor.profilePictureUrl != null && doctor.profilePictureUrl!.isNotEmpty
-                        ? NetworkImage(doctor.profilePictureUrl!)
+                    // Use doctor.imageUrl from the model
+                    backgroundImage: doctor.imageUrl != null && doctor.imageUrl!.isNotEmpty
+                        ? NetworkImage(doctor.imageUrl!) // Accessing doctor.imageUrl
                         : null,
-                    child: doctor.profilePictureUrl == null || doctor.profilePictureUrl!.isEmpty
+                    child: doctor.imageUrl == null || doctor.imageUrl!.isEmpty // Accessing doctor.imageUrl
                         ? Icon(Icons.person, size: 30, color: Theme.of(context).primaryColor)
                         : null,
                   ),
+                  // Use doctor.name and doctor.specialization from the model
                   title: Text(doctor.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text('${doctor.specialization}\n$qualificationsText'),
-                  isThreeLine: qualificationsText != 'Not specified', // Make it three line if qualifications are present
+                  isThreeLine: qualificationsText != 'Not specified' && qualificationsText.isNotEmpty,
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        // Ensure DoctorAppointmentDetailScreen also imports Doctor from doctor_model.dart
+                        // The Doctor object passed here now contains all fetched fields
+                        // as mapped by Doctor.fromFirestore
                         builder: (context) => DoctorAppointmentDetailScreen(doctor: doctor),
                       ),
                     );

@@ -1,12 +1,21 @@
-// screens/select_category_screen.dart
+// lib/screens/select_category_screen.dart
 import 'package:flutter/material.dart';
-import 'select_doctor_screen.dart'; // We will create this next
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+import 'select_doctor_screen.dart';
 
+// Updated Category model
 class Category {
+  final String id; // Firestore document ID
   final String name;
-  final IconData iconData; // Or String for image asset path
+  final IconData iconData;
+  final String? imageUrl; // Optional: from Firestore schema
 
-  Category({required this.name, required this.iconData});
+  Category({
+    required this.id,
+    required this.name,
+    required this.iconData,
+    this.imageUrl,
+  });
 }
 
 class SelectCategoryScreen extends StatefulWidget {
@@ -17,53 +26,104 @@ class SelectCategoryScreen extends StatefulWidget {
 }
 
 class _SelectCategoryScreenState extends State<SelectCategoryScreen> {
-  // Define your categories here. You can expand this list.
-  // For icons, I'm using Material Icons. You can use custom SVGs/images.
-  final List<Category> _categories = [
-    Category(name: 'Dental care', iconData: Icons.medical_services_outlined), // Placeholder, find better icons
-    Category(name: 'Heart', iconData: Icons.favorite_border),
-    Category(name: 'Kidney Issues', iconData: Icons.water_drop_outlined), // Placeholder
-    Category(name: 'Cancer', iconData: Icons.healing_outlined), // Placeholder
-    Category(name: 'Ayurveda', iconData: Icons.spa_outlined),
-    Category(name: 'Mental Wellness', iconData: Icons.psychology_outlined),
-    Category(name: 'Homoeopath', iconData: Icons.eco_outlined), // Placeholder
-    Category(name: 'Physiotherapy', iconData: Icons.sports_kabaddi_outlined),
-    Category(name: 'General Surgery', iconData: Icons.content_cut_outlined),
-    Category(name: 'Urinary Issues', iconData: Icons.water_damage_outlined), // Placeholder
-    Category(name: 'Lungs and Breathing', iconData: Icons.air_outlined),
-    Category(name: 'General physician', iconData: Icons.person_outline),
-    Category(name: 'Eye Specialist', iconData: Icons.visibility_outlined),
-    Category(name: 'Women\'s Health', iconData: Icons.pregnant_woman_outlined),
-    Category(name: 'Diet & Nutrition', iconData: Icons.restaurant_outlined),
-    Category(name: 'Skin & Hair', iconData: Icons.face_retouching_natural_outlined),
-    Category(name: 'Bones & Joints', iconData: Icons.accessibility_new_outlined), // Placeholder
-    Category(name: 'Child Specialist', iconData: Icons.child_care_outlined),
-    // Add more categories as per your images
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // Local list primarily for icon mapping fallback
+  final List<Category> _localIconCategories = [
+    Category(id: '', name: 'Dental care', iconData: Icons.medical_services_outlined),
+    Category(id: '', name: 'Heart', iconData: Icons.favorite_border),
+    Category(id: '', name: 'Kidney Issues', iconData: Icons.water_drop_outlined),
+    Category(id: '', name: 'Cancer', iconData: Icons.healing_outlined),
+    Category(id: '', name: 'Ayurveda', iconData: Icons.spa_outlined),
+    Category(id: '', name: 'Mental Wellness', iconData: Icons.psychology_outlined),
+    Category(id: '', name: 'Homoeopath', iconData: Icons.eco_outlined),
+    Category(id: '', name: 'Physiotherapy', iconData: Icons.sports_kabaddi_outlined),
+    Category(id: '', name: 'General Surgery', iconData: Icons.content_cut_outlined),
+    Category(id: '', name: 'Urinary Issues', iconData: Icons.water_damage_outlined),
+    Category(id: '', name: 'Lungs and Breathing', iconData: Icons.air_outlined),
+    Category(id: '', name: 'General physician', iconData: Icons.person_outline),
+    Category(id: '', name: 'Eye Specialist', iconData: Icons.visibility_outlined),
+    Category(id: '', name: 'Women\'s Health', iconData: Icons.pregnant_woman_outlined),
+    Category(id: '', name: 'Diet & Nutrition', iconData: Icons.restaurant_outlined),
+    Category(id: '', name: 'Skin & Hair', iconData: Icons.face_retouching_natural_outlined),
+    Category(id: '', name: 'Bones & Joints', iconData: Icons.accessibility_new_outlined),
+    Category(id: '', name: 'Child Specialist', iconData: Icons.child_care_outlined),
   ];
 
+  List<Category> _allFetchedCategories = []; // Will be populated from Firestore
   List<Category> _filteredCategories = [];
   final TextEditingController _searchController = TextEditingController();
+  bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _filteredCategories = _categories;
+    _fetchCategoriesFromFirestore();
     _searchController.addListener(_filterCategories);
+  }
+
+  IconData _getIconForCategory(String categoryName) {
+    final foundCategory = _localIconCategories.firstWhere(
+      (cat) => cat.name.toLowerCase() == categoryName.toLowerCase(),
+      orElse: () => Category(id: '', name: 'Default', iconData: Icons.category_outlined), // Default icon
+    );
+    return foundCategory.iconData;
+  }
+
+  Future<void> _fetchCategoriesFromFirestore() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      QuerySnapshot querySnapshot =
+          await _firestore.collection('categories').orderBy('name').get();
+
+      List<Category> fetchedCategories = querySnapshot.docs.map((doc) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        String name = data['name'] ?? 'Unnamed Category';
+        return Category(
+          id: doc.id,
+          name: name,
+          iconData: _getIconForCategory(name), // Get icon from local map
+          imageUrl: data['imageUrl'], // Store if available
+        );
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _allFetchedCategories = fetchedCategories;
+          _filteredCategories = _allFetchedCategories;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching categories: $e");
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = "Failed to load categories. Please try again.";
+        });
+      }
+    }
   }
 
   void _filterCategories() {
     final query = _searchController.text.toLowerCase();
-    if (query.isEmpty) {
-      setState(() {
-        _filteredCategories = _categories;
-      });
-    } else {
-      setState(() {
-        _filteredCategories = _categories
+    if (!mounted) return;
+
+    setState(() {
+      if (query.isEmpty) {
+        _filteredCategories = _allFetchedCategories;
+      } else {
+        _filteredCategories = _allFetchedCategories
             .where((category) => category.name.toLowerCase().contains(query))
             .toList();
-      });
-    }
+      }
+    });
   }
 
   @override
@@ -75,13 +135,19 @@ class _SelectCategoryScreenState extends State<SelectCategoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // --- UI CODE REMAINS UNCHANGED AS PER YOUR REQUEST ---
+    // The functional changes are in data fetching and state management.
+    // The build method will now use _isLoading, _error, and _filteredCategories.
+    // For completeness, I'll paste your build method here with necessary 
+    // adjustments for loading and error states.
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Find a Doctor for your Health Problem',
           style: TextStyle(color: Color(0xFF00695C), fontSize: 18, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.white, // Or your theme's app bar color
+        backgroundColor: Colors.white,
         elevation: 1.0,
         iconTheme: const IconThemeData(color: Color(0xFF00695C)),
         leading: IconButton(
@@ -109,25 +175,52 @@ class _SelectCategoryScreenState extends State<SelectCategoryScreen> {
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              itemCount: _filteredCategories.length,
-              itemBuilder: (context, index) {
-                final category = _filteredCategories[index];
-                return ListTile(
-                  leading: Icon(category.iconData, color: Theme.of(context).primaryColor),
-                  title: Text(category.name),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => SelectDoctorScreen(specialization: category.name),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080))))
+                : _error != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red, fontSize: 16)),
+                              const SizedBox(height: 10),
+                              ElevatedButton(
+                                onPressed: _fetchCategoriesFromFirestore,
+                                child: const Text('Retry'),
+                              )
+                            ],
+                          ),
+                        ),
+                      )
+                    : _filteredCategories.isEmpty && _searchController.text.isNotEmpty
+                        ? const Center(child: Text("No categories found for your search.", style: TextStyle(fontSize: 16, color: Colors.grey)))
+                        : _filteredCategories.isEmpty && _searchController.text.isEmpty
+                            ? const Center(child: Text("No categories available.", style: TextStyle(fontSize: 16, color: Colors.grey)))
+                            : ListView.builder(
+                                itemCount: _filteredCategories.length,
+                                itemBuilder: (context, index) {
+                                  final category = _filteredCategories[index];
+                                  return ListTile(
+                                    leading: Icon(category.iconData, color: Theme.of(context).primaryColor),
+                                    title: Text(category.name),
+                                    trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => SelectDoctorScreen(
+                                            // Pass category name. SelectDoctorScreen will use this
+                                            // to query doctors based on their 'speciality' field.
+                                            specialization: category.name,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  );
+                                },
+                              ),
           ),
         ],
       ),
