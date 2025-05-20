@@ -147,7 +147,7 @@ web/.dart_tool/
 
 # Custom files/folders for your project (Review these based on your needs)
 # If version.json is generated or machine-specific, uncomment the next line
-# version.json
+ version.json
 
 # If your ppt/ directory contains very large files or is not essential for all collaborators,
 # you might consider ignoring it, though typically documentation is tracked.
