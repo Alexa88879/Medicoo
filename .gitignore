@@ -171,3 +171,6 @@ credentials.*
 version.json
 firebase_options.dart
 rules.js
+# API Keys
+**/android/app/src/main/res/values/secrets.xml
+**/lib/secrets.dart
