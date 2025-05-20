@@ -5,8 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart'; // For logout
 import 'login_screen.dart'; // For navigation after logout
+import 'account_details_screen.dart'; // <<<--- IMPORT THE ACCOUNT DETAILS SCREEN
 // Import other screens you'll navigate to, e.g.:
-// import 'account_details_screen.dart'; 
 // import 'my_reports_screen.dart'; 
 
 class ProfileScreen extends StatefulWidget {
@@ -43,6 +43,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           setState(() {
             if (userDocSnap.exists) {
               _userData = userDocSnap.data() as Map<String, dynamic>?;
+            } else {
+              // If Firestore doc doesn't exist, initialize _userData with what's in Auth
+              _userData = {
+                'displayName': _currentUser?.displayName,
+                'email': _currentUser?.email,
+                'photoURL': _currentUser?.photoURL,
+                // Add other fields with default/null values if your UI expects them
+              };
             }
             _isLoading = false;
           });
@@ -103,7 +111,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         debugPrint("Firebase user signed out.");
 
         if (mounted) {
-          Navigator.of(context).pushAndRemoveUntil(
+          // Use rootNavigator: true if ProfileScreen is part of a nested Navigator (e.g. in HomeScreen's IndexedStack)
+          // to ensure it pops all the way to the LoginScreen.
+          Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const LoginScreen()),
             (Route<dynamic> route) => false,
           );
@@ -125,14 +135,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     VoidCallback? onTap,
   }) {
     String fullAssetPath = 'assets/icons/profile/$assetName'; 
-    debugPrint("Loading asset: $fullAssetPath"); 
+    // debugPrint("Loading asset: $fullAssetPath"); // Keep for debugging if needed
 
     return ListTile(
       leading: SvgPicture.asset(
         fullAssetPath, 
         width: 24,
         height: 24,
-        // Updated: Use theme color for icons in the list
         colorFilter: ColorFilter.mode(Theme.of(context).primaryColor, BlendMode.srcIn), 
         placeholderBuilder: (BuildContext context) => Icon(Icons.error_outline, color: Colors.red.shade300), 
       ),
@@ -152,18 +161,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     String displayEmail = _isLoading ? " " : (_userData?['email'] ?? _currentUser?.email ?? "email@example.com");
     String? photoURL = _userData?['photoURL'] ?? _currentUser?.photoURL;
     
-    // Define the theme color to be used for icons
-    final Color iconThemeColor = Theme.of(context).primaryColor; // Or your specific Color(0xFF00695C)
+    final Color iconThemeColor = Theme.of(context).primaryColor; 
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile', style: TextStyle(color: Color(0xFF00695C), fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         elevation: 1.0,
-        iconTheme: IconThemeData(color: iconThemeColor), // For back button if needed
+        iconTheme: IconThemeData(color: iconThemeColor), 
+        // If ProfileScreen is a tab in HomeScreen managed by IndexedStack, 
+        // it shouldn't have its own back button to pop HomeScreen.
+        // The AppBar in ProfileScreen (if it's a root view of a tab) should not have a leading back button.
+        automaticallyImplyLeading: false, 
         actions: [
           IconButton(
-            // Updated: Use theme color for notification icon
             icon: Icon(Icons.notifications_none_outlined, color: iconThemeColor, size: 28), 
             onPressed: () {
                ScaffoldMessenger.of(context).showSnackBar(
@@ -222,10 +233,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildProfileOptionItem(
                     assetName: 'account_icon.svg', 
                     title: 'Account',
-                    onTap: () {
-                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Account tapped (Not Implemented)')),
-                      );
+                    onTap: () { // <<<--- UPDATED onTap FOR ACCOUNT ---<<<
+                      Navigator.push(
+                        context, // Uses the context from ProfileScreen
+                        MaterialPageRoute(builder: (context) => const AccountDetailsScreen()),
+                      ).then((dataWasUpdated) {
+                        // If AccountDetailsScreen pops and indicates data was updated (e.g., returns true)
+                        if (dataWasUpdated == true && mounted) {
+                          _loadUserData(); // Refresh the profile data on this screen
+                        }
+                      });
                     }
                   ),
                   _buildProfileOptionItem(assetName: 'family_icon.svg', title: 'Family'),
@@ -233,6 +250,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildProfileOptionItem(assetName: 'orders_icon.svg', title: 'My Orders'),
                   _buildProfileOptionItem(assetName: 'insurance_icon.svg', title: 'Insurances'),
                   _buildProfileOptionItem(assetName: 'history_icon.svg', title: 'History'),
+                  const Divider(height: 1, thickness: 1, indent: 16, endIndent: 16, color: Color(0xFFEEEEEE)),
                   _buildProfileOptionItem(assetName: 'settings_icon.svg', title: 'Setting'),
                   _buildProfileOptionItem(assetName: 'help_icon.svg', title: 'Help and Support'),
                   const SizedBox(height: 24),
@@ -242,7 +260,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       icon: SvgPicture.asset(
                         'assets/icons/profile/logout_icon.svg', 
                          width: 20, height: 20,
-                         // Logout icon typically stays red or a distinct color
                          colorFilter: ColorFilter.mode(Colors.red.shade700, BlendMode.srcIn),
                          placeholderBuilder: (BuildContext context) => Icon(Icons.exit_to_app, color: Colors.red.shade300),
                       ),

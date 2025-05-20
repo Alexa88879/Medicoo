@@ -460,10 +460,17 @@ class _HomeScreenState extends State<HomeScreen> {
         body: IndexedStack(
           index: _selectedIndex,
           children: [
-            RefreshIndicator(
-              onRefresh: _loadHomeData,
-              color: selectedColor,
-              child: _widgetOptions[0],
+            Navigator(
+              key: _homeNavigatorKey,
+              onGenerateRoute: (routeSettings) {
+                return MaterialPageRoute(
+                  builder: (context) => RefreshIndicator(
+                    onRefresh: _loadHomeData,
+                    color: selectedColor,
+                    child: _buildHomeTabBody(),
+                  ),
+                );
+              },
             ),
             _widgetOptions[1],
             _widgetOptions[2],
