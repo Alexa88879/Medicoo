@@ -7,6 +7,9 @@ environment:
   sdk: '>=3.1.5 <4.0.0'
 
 dependencies:
+  google_generative_ai: ^0.4.7
+  speech_to_text: ^7.0.0  # Use this more stable version
+  flutter_tts: ^4.2.2
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.2

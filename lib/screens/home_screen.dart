@@ -12,6 +12,7 @@ import 'nearby_screen_gplaces.dart';
 import 'profile_screen.dart'; 
 import 'records_list_screen.dart'; 
 import 'book_lab_test_screen.dart';
+import 'medical_voice_assistant.dart';
 
 // Helper icon widgets (ensure these asset paths are correct in your project)
 Widget _buildCompositeProfileIcon({
@@ -162,7 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
           return MaterialPageRoute(builder: (context) => const RecordsListScreen());
         },
       ),
-      Container(key: const ValueKey("scan_placeholder")), 
+      const MedicalVoiceAssistant(), // Replace the Container placeholder with actual widget
       const NearbyScreenWithGooglePlaces(key: ValueKey("nearby_screen")), 
       const ProfileScreen(key: ValueKey("profile_screen")), 
     ];
@@ -306,46 +307,44 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onItemTapped(int index) {
-    if (!mounted) return;
+    setState(() => _selectedIndex = index);
 
-    if (index == 2) { // Scan is a direct action
-      _scanQrCode();
-      return; 
-    }
-    
-    // If tapping the currently selected tab that has a nested navigator, pop to its first route
-    if (_selectedIndex == index) {
-      switch (index) {
-        case 0: // Home
-          _homeNavigatorKey.currentState?.popUntil((route) => route.isFirst);
-          break;
-        case 1: // Records
-          _recordsNavigatorKey.currentState?.popUntil((route) => route.isFirst);
-          break;
-        // For Nearby (index 3) and Profile (index 4), since they are direct widgets
-        // in IndexedStack and not Navigators themselves (in this setup),
-        // tapping them again when selected doesn't need special pop logic here.
-        // If they were also Navigators, you'd add cases for them.
-      }
-    } else {
-      setState(() {
-        _selectedIndex = index;
-      });
+    if (index == _selectedIndex && index == 0 && _homeNavigatorKey.currentState?.canPop() == true) {
+      _homeNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+      return;
     }
 
-    if (index == 0 && (_isHomeDataLoading || _userData == null)) {
-        _loadHomeData();
+    // For assistant tab, we don't need navigation since it's a direct widget
+    if (index == 2) {
+      return;
     }
-  }
 
-  void _scanQrCode() {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('QR Code Scanner Tapped! (Not Implemented)')),
-      );
+    // Handle other navigation cases
+    switch (index) {
+      case 0:
+        _homeNavigatorKey.currentState?.pushReplacement(
+          MaterialPageRoute(builder: (context) => _buildHomeTabBody())
+        );
+        break;
+      case 1:
+        _recordsNavigatorKey.currentState?.pushReplacement(
+          MaterialPageRoute(builder: (context) => const RecordsListScreen())
+        );
+        break;
+      case 3:
+        _homeNavigatorKey.currentState?.pushReplacement(
+          MaterialPageRoute(builder: (context) => const NearbyScreenWithGooglePlaces())
+        );
+        break;
+      case 4:
+        _homeNavigatorKey.currentState?.pushReplacement(
+          MaterialPageRoute(builder: (context) => const ProfileScreen())
+        );
+        break;
     }
   }
 
+ 
   void _addNewAppointmentAction() {
     Navigator.of(context).push( // Use root navigator or context of home tab's navigator
       MaterialPageRoute(builder: (context) => const SelectCategoryScreen()),
@@ -497,11 +496,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 customBorder: const CircleBorder(),
                 child: Padding( 
                   padding: const EdgeInsets.all(8.0),
-                  child: SvgPicture.asset('assets/icons/qr_code_scanner.svg', width: 28, height: 28,
+                  child: SvgPicture.asset('assets/icons/medicall_icon.svg', width: 28, height: 28,
                     colorFilter: const ColorFilter.mode(selectedColor, BlendMode.srcIn)),
                 ),
               ),
-              label: 'Scan',
+              label: 'Assistant',
             ),
             BottomNavigationBarItem(
               icon: SvgPicture.asset('assets/icons/nearby.svg', width: 24, height: 24,
