@@ -11,6 +11,7 @@ import 'select_category_screen.dart';
 import 'nearby_screen_gplaces.dart'; 
 import 'profile_screen.dart'; 
 import 'records_list_screen.dart'; 
+import 'book_lab_test_screen.dart';
 
 // Helper icon widgets (ensure these asset paths are correct in your project)
 Widget _buildCompositeProfileIcon({
@@ -435,8 +436,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) async {
-        // Check if the current tab's nested navigator can pop
+      onPopInvoked: (bool didPop) {
+        if (didPop) {
+          return;
+        }
+        
         final NavigatorState? currentNavigatorState;
         switch (_selectedIndex) {
           case 0: // Home
@@ -452,9 +456,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         if (currentNavigatorState != null && currentNavigatorState.canPop()) {
           currentNavigatorState.pop();
-          return; // No need to return bool in onPopInvoked
         }
-        // No need to return bool in onPopInvoked
       },
       child: Scaffold(
         body: IndexedStack(
@@ -596,20 +598,108 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisCount: 2,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 12.0,
-        mainAxisSpacing: 12.0,
-        childAspectRatio: 2.4, 
-        children: <Widget>[
-          _actionButton(iconPath: 'assets/icons/medical_icon.svg', label: 'Book Appointment', onTap: _addNewAppointmentAction),
-          _actionButton(iconPath: 'assets/icons/labs_icon.svg', label: 'Book Lab Test', onTap: () {
-              if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Book Lab Test (Not Implemented)')));
-            }),
+        mainAxisSpacing: 15.0,
+        crossAxisSpacing: 15.0,
+        children: [
+          InkWell(
+            onTap: _addNewAppointmentAction,
+            child: _buildActionButton(
+              iconPath: 'assets/icons/medical_icon.svg',
+              label: 'Book Doctor Appointment',
+            ),
+          ),
+          InkWell(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const BookLabTestScreen()),
+              );
+            },
+            child: _buildActionButton(
+              iconPath: 'assets/icons/labs_icon.svg',
+              label: 'Book Lab Test',
+            ),
+          ),
           _actionButton(iconPath: 'assets/icons/order_icon_1.svg', label: 'Order Medicine', onTap: () {
               if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Order Medicine (Not Implemented)')));
             }),
           _actionButton(iconPath: 'assets/icons/video_icon.svg', label: 'Video Consultation', onTap: () {
               if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Video Consultation (Not Implemented)')));
             }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required String iconPath,
+    required String label,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.15),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SvgPicture.asset(
+            iconPath,
+            width: 32,
+            height: 32,
+            colorFilter: const ColorFilter.mode(Color(0xFF008080), BlendMode.srcIn),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF008080),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButtonsSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        mainAxisSpacing: 12.0,
+        crossAxisSpacing: 12.0,
+        childAspectRatio: 1.4,
+        children: [
+          InkWell(
+            onTap: _addNewAppointmentAction,
+            child: _buildActionButton(
+              iconPath: 'assets/icons/medical_icon.svg',
+              label: 'Book Doctor Appointment',
+            ),
+          ),
+          InkWell(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const BookLabTestScreen()),
+              );
+            },
+            child: _buildActionButton(
+              iconPath: 'assets/icons/labs_icon.svg',
+              label: 'Book Lab Test',
+            ),
+          ),
         ],
       ),
     );
