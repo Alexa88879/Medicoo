@@ -19,7 +19,9 @@ class Category {
 }
 
 class SelectCategoryScreen extends StatefulWidget {
-  const SelectCategoryScreen({super.key});
+  final String? bookingType; // "in_person" or "video"
+
+  const SelectCategoryScreen({super.key, this.bookingType = "in_person"}); // Default to in_person
 
   @override
   State<SelectCategoryScreen> createState() => _SelectCategoryScreenState();
@@ -50,7 +52,7 @@ class _SelectCategoryScreenState extends State<SelectCategoryScreen> {
     Category(id: '', name: 'Child Specialist', iconData: Icons.child_care_outlined),
   ];
 
-  List<Category> _allFetchedCategories = []; // Will be populated from Firestore
+  List<Category> _allFetchedCategories = [];
   List<Category> _filteredCategories = [];
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = true;
@@ -66,7 +68,7 @@ class _SelectCategoryScreenState extends State<SelectCategoryScreen> {
   IconData _getIconForCategory(String categoryName) {
     final foundCategory = _localIconCategories.firstWhere(
       (cat) => cat.name.toLowerCase() == categoryName.toLowerCase(),
-      orElse: () => Category(id: '', name: 'Default', iconData: Icons.category_outlined), // Default icon
+      orElse: () => Category(id: '', name: 'Default', iconData: Icons.category_outlined),
     );
     return foundCategory.iconData;
   }
@@ -88,8 +90,8 @@ class _SelectCategoryScreenState extends State<SelectCategoryScreen> {
         return Category(
           id: doc.id,
           name: name,
-          iconData: _getIconForCategory(name), // Get icon from local map
-          imageUrl: data['imageUrl'], // Store if available
+          iconData: _getIconForCategory(name),
+          imageUrl: data['imageUrl'],
         );
       }).toList();
 
@@ -135,17 +137,15 @@ class _SelectCategoryScreenState extends State<SelectCategoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // --- UI CODE REMAINS UNCHANGED AS PER YOUR REQUEST ---
-    // The functional changes are in data fetching and state management.
-    // The build method will now use _isLoading, _error, and _filteredCategories.
-    // For completeness, I'll paste your build method here with necessary 
-    // adjustments for loading and error states.
+    String appBarTitle = widget.bookingType == "video"
+        ? 'Video Consultation: Select Speciality'
+        : 'Find a Doctor for your Health Problem';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Find a Doctor for your Health Problem',
-          style: TextStyle(color: Color(0xFF00695C), fontSize: 18, fontWeight: FontWeight.bold),
+        title: Text(
+          appBarTitle,
+          style: const TextStyle(color: Color(0xFF00695C), fontSize: 18, fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.white,
         elevation: 1.0,
@@ -211,9 +211,8 @@ class _SelectCategoryScreenState extends State<SelectCategoryScreen> {
                                         context,
                                         MaterialPageRoute(
                                           builder: (context) => SelectDoctorScreen(
-                                            // Pass category name. SelectDoctorScreen will use this
-                                            // to query doctors based on their 'speciality' field.
                                             specialization: category.name,
+                                            bookingType: widget.bookingType, // Pass bookingType
                                           ),
                                         ),
                                       );

@@ -1,12 +1,19 @@
 //lib\screens\select_doctor_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'doctor_appointment_detail_screen.dart'; 
-import '../models/doctor_model.dart'; // Ensure this path is correct and doctor_model.dart is updated
+import 'doctor_appointment_detail_screen.dart';
+import '../models/doctor_model.dart';
+import 'book_video_consultation_screen.dart'; // Import the new screen
 
 class SelectDoctorScreen extends StatefulWidget {
-  final String specialization; // This should match the 'speciality' field in Firestore
-  const SelectDoctorScreen({super.key, required this.specialization});
+  final String specialization;
+  final String? bookingType; // "in_person" or "video"
+
+  const SelectDoctorScreen({
+    super.key,
+    required this.specialization,
+    this.bookingType = "in_person", // Default to in_person
+  });
 
   @override
   State<SelectDoctorScreen> createState() => _SelectDoctorScreenState();
@@ -19,24 +26,34 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
   @override
   void initState() {
     super.initState();
-    _doctorsFuture = _fetchDoctorsBySpecialization(widget.specialization);
+    _doctorsFuture = _fetchDoctorsBySpecialization(widget.specialization, widget.bookingType);
   }
 
-  Future<List<Doctor>> _fetchDoctorsBySpecialization(String specialization) async {
+  Future<List<Doctor>> _fetchDoctorsBySpecialization(String specialization, String? bookingType) async {
     try {
-      // Fetching documents as Map<String, dynamic>
-      QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
-          .collection('doctors') 
-          .where('speciality', isEqualTo: specialization) // Querying by 'speciality'
-          .where('isAvailable', isEqualTo: true) // Querying by 'isAvailable'
-          .get();
+      Query<Map<String, dynamic>> query = _firestore
+          .collection('doctors')
+          .where('speciality', isEqualTo: specialization)
+          .where('isAvailable', isEqualTo: true);
+
+      // If booking type is video, filter for doctors offering video consultations
+      if (bookingType == "video") {
+        // Assuming 'offersVideoConsultation' is a boolean field in your 'doctors' collection
+        // If this field doesn't exist, this query might return no doctors for "video" type.
+        // Ensure your Firestore data for doctors includes this field.
+        query = query.where('offersVideoConsultation', isEqualTo: true);
+      }
+      // You might want to add .orderBy() here if needed, e.g., .orderBy('rating', descending: true)
+      // For example: query = query.orderBy('name');
+
+      QuerySnapshot<Map<String, dynamic>> snapshot = await query.get();
+
 
       if (snapshot.docs.isEmpty) {
+        debugPrint('No doctors found for specialization "$specialization" and bookingType "$bookingType"');
         return [];
       }
 
-      // Use the factory constructor from the Doctor model for mapping
-      // This ensures that field names and types are handled as defined in the model
       return snapshot.docs.map((doc) => Doctor.fromFirestore(doc)).toList();
 
     } catch (e) {
@@ -46,16 +63,20 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
           SnackBar(content: Text('Failed to load doctors: ${e.toString()}')),
         );
       }
-      return []; 
+      return [];
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    String appBarTitle = widget.bookingType == "video"
+        ? 'Video Consultation: Select Doctor'
+        : 'Doctors for ${widget.specialization}';
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('Doctors for ${widget.specialization}', style: const TextStyle(color: Colors.white)),
-        backgroundColor: const Color(0xFF6EB6B4), 
+        title: Text(appBarTitle, style: const TextStyle(color: Colors.white)),
+        backgroundColor: const Color(0xFF6EB6B4),
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
       ),
@@ -78,11 +99,14 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
             );
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            String message = widget.bookingType == "video"
+                ? 'No doctors found offering video consultations for ${widget.specialization} at the moment.'
+                : 'No doctors found for ${widget.specialization} at the moment.';
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
                 child: Text(
-                  'No doctors found for ${widget.specialization} at the moment.',
+                  message,
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 16, color: Colors.grey),
                 ),
@@ -95,7 +119,6 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
             itemCount: doctors.length,
             itemBuilder: (context, index) {
               final doctor = doctors[index];
-              // Qualifications are List<String>? directly from the model via fromFirestore factory
               String qualificationsText = (doctor.qualifications != null && doctor.qualifications!.isNotEmpty)
                                           ? doctor.qualifications!.join(', ')
                                           : 'Not specified';
@@ -107,28 +130,33 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
                   leading: CircleAvatar(
                     radius: 30,
                     backgroundColor: Colors.grey.shade200,
-                    // Use doctor.imageUrl from the model
                     backgroundImage: doctor.imageUrl != null && doctor.imageUrl!.isNotEmpty
-                        ? NetworkImage(doctor.imageUrl!) // Accessing doctor.imageUrl
+                        ? NetworkImage(doctor.imageUrl!)
                         : null,
-                    child: doctor.imageUrl == null || doctor.imageUrl!.isEmpty // Accessing doctor.imageUrl
+                    child: doctor.imageUrl == null || doctor.imageUrl!.isEmpty
                         ? Icon(Icons.person, size: 30, color: Theme.of(context).primaryColor)
                         : null,
                   ),
-                  // Use doctor.name and doctor.specialization from the model
                   title: Text(doctor.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text('${doctor.specialization}\n$qualificationsText'),
                   isThreeLine: qualificationsText != 'Not specified' && qualificationsText.isNotEmpty,
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        // The Doctor object passed here now contains all fetched fields
-                        // as mapped by Doctor.fromFirestore
-                        builder: (context) => DoctorAppointmentDetailScreen(doctor: doctor),
-                      ),
-                    );
+                    if (widget.bookingType == "video") {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => BookVideoConsultationScreen(doctor: doctor),
+                        ),
+                      );
+                    } else { // Default to in-person or existing flow
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => DoctorAppointmentDetailScreen(doctor: doctor),
+                        ),
+                      );
+                    }
                   },
                 ),
               );
