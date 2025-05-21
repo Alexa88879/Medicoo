@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'doctor_appointment_detail_screen.dart';
 import '../models/doctor_model.dart';
-import 'book_video_consultation_screen.dart'; // Import the new screen
+ // Import the new screen
 
 class SelectDoctorScreen extends StatefulWidget {
   final String specialization;
@@ -36,18 +36,12 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
           .where('speciality', isEqualTo: specialization)
           .where('isAvailable', isEqualTo: true);
 
-      // If booking type is video, filter for doctors offering video consultations
+      // Filter for video consultation capable doctors
       if (bookingType == "video") {
-        // Assuming 'offersVideoConsultation' is a boolean field in your 'doctors' collection
-        // If this field doesn't exist, this query might return no doctors for "video" type.
-        // Ensure your Firestore data for doctors includes this field.
         query = query.where('offersVideoConsultation', isEqualTo: true);
       }
-      // You might want to add .orderBy() here if needed, e.g., .orderBy('rating', descending: true)
-      // For example: query = query.orderBy('name');
 
       QuerySnapshot<Map<String, dynamic>> snapshot = await query.get();
-
 
       if (snapshot.docs.isEmpty) {
         debugPrint('No doctors found for specialization "$specialization" and bookingType "$bookingType"');
@@ -55,7 +49,6 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
       }
 
       return snapshot.docs.map((doc) => Doctor.fromFirestore(doc)).toList();
-
     } catch (e) {
       debugPrint("Error fetching doctors by specialization: $e");
       if(mounted) {
@@ -108,7 +101,7 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
                 child: Text(
                   message,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                  style: const TextStyle(fontSize: 16),
                 ),
               ),
             );
@@ -142,21 +135,12 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
                   isThreeLine: qualificationsText != 'Not specified' && qualificationsText.isNotEmpty,
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                   onTap: () {
-                    if (widget.bookingType == "video") {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => BookVideoConsultationScreen(doctor: doctor),
-                        ),
-                      );
-                    } else { // Default to in-person or existing flow
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => DoctorAppointmentDetailScreen(doctor: doctor),
-                        ),
-                      );
-                    }
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => DoctorAppointmentDetailScreen(doctor: doctor),
+                      ),
+                    );
                   },
                 ),
               );
