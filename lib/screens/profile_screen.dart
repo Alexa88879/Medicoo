@@ -5,9 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart'; // For logout
 import 'login_screen.dart'; // For navigation after logout
-import 'account_details_screen.dart'; // <<<--- IMPORT THE ACCOUNT DETAILS SCREEN
-// Import other screens you'll navigate to, e.g.:
-// import 'my_reports_screen.dart'; 
+import 'account_details_screen.dart';
+import 'allergy_list_screen.dart';
+import 'family_screen.dart'; // <<<--- IMPORT THE NEW FAMILY SCREEN
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -44,12 +44,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             if (userDocSnap.exists) {
               _userData = userDocSnap.data() as Map<String, dynamic>?;
             } else {
-              // If Firestore doc doesn't exist, initialize _userData with what's in Auth
               _userData = {
                 'displayName': _currentUser?.displayName,
                 'email': _currentUser?.email,
                 'photoURL': _currentUser?.photoURL,
-                // Add other fields with default/null values if your UI expects them
               };
             }
             _isLoading = false;
@@ -78,7 +76,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _logoutUser() async {
     final bool? confirmLogout = await showDialog<bool>(
       context: context,
-      builder: (BuildContext dialogContext) { 
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('Confirm Logout'),
           content: const Text('Are you sure you want to log out?'),
@@ -111,8 +109,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         debugPrint("Firebase user signed out.");
 
         if (mounted) {
-          // Use rootNavigator: true if ProfileScreen is part of a nested Navigator (e.g. in HomeScreen's IndexedStack)
-          // to ensure it pops all the way to the LoginScreen.
           Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const LoginScreen()),
             (Route<dynamic> route) => false,
@@ -130,20 +126,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildProfileOptionItem({
-    required String assetName, 
+    required String assetName,
     required String title,
     VoidCallback? onTap,
   }) {
-    String fullAssetPath = 'assets/icons/profile/$assetName'; 
-    // debugPrint("Loading asset: $fullAssetPath"); // Keep for debugging if needed
+    String fullAssetPath = 'assets/icons/profile/$assetName';
 
     return ListTile(
       leading: SvgPicture.asset(
-        fullAssetPath, 
+        fullAssetPath,
         width: 24,
         height: 24,
-        colorFilter: ColorFilter.mode(Theme.of(context).primaryColor, BlendMode.srcIn), 
-        placeholderBuilder: (BuildContext context) => Icon(Icons.error_outline, color: Colors.red.shade300), 
+        colorFilter: ColorFilter.mode(Theme.of(context).primaryColor, BlendMode.srcIn),
+        placeholderBuilder: (BuildContext context) => Icon(Icons.error_outline, color: Colors.red.shade300),
       ),
       title: Text(title, style: TextStyle(fontSize: 16, color: Colors.grey.shade800)),
       trailing: Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey.shade500),
@@ -161,21 +156,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     String displayEmail = _isLoading ? " " : (_userData?['email'] ?? _currentUser?.email ?? "email@example.com");
     String? photoURL = _userData?['photoURL'] ?? _currentUser?.photoURL;
     
-    final Color iconThemeColor = Theme.of(context).primaryColor; 
+    final Color iconThemeColor = Theme.of(context).primaryColor;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile', style: TextStyle(color: Color(0xFF00695C), fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         elevation: 1.0,
-        iconTheme: IconThemeData(color: iconThemeColor), 
-        // If ProfileScreen is a tab in HomeScreen managed by IndexedStack, 
-        // it shouldn't have its own back button to pop HomeScreen.
-        // The AppBar in ProfileScreen (if it's a root view of a tab) should not have a leading back button.
-        automaticallyImplyLeading: false, 
+        iconTheme: IconThemeData(color: iconThemeColor),
+        automaticallyImplyLeading: false,
         actions: [
           IconButton(
-            icon: Icon(Icons.notifications_none_outlined, color: iconThemeColor, size: 28), 
+            icon: Icon(Icons.notifications_none_outlined, color: iconThemeColor, size: 28),
             onPressed: () {
                ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Notifications tapped (Not Implemented)')),
@@ -187,11 +179,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: Colors.white,
       body: _isLoading
           ? Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(iconThemeColor)))
-          : RefreshIndicator( 
+          : RefreshIndicator(
             onRefresh: _loadUserData,
             color: iconThemeColor,
             child: ListView(
-                padding: const EdgeInsets.all(0), 
+                padding: const EdgeInsets.all(0),
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -204,7 +196,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ? NetworkImage(photoURL)
                               : null,
                           child: (photoURL == null || photoURL.isEmpty)
-                              ? Icon(Icons.person, size: 35, color: Colors.grey.shade600) 
+                              ? Icon(Icons.person, size: 35, color: Colors.grey.shade600)
                               : null,
                         ),
                         const SizedBox(width: 16),
@@ -231,21 +223,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const Divider(height: 1, thickness: 1, color: Color(0xFFEEEEEE)),
                   _buildProfileOptionItem(
-                    assetName: 'account_icon.svg', 
+                    assetName: 'account_icon.svg',
                     title: 'Account',
-                    onTap: () { // <<<--- UPDATED onTap FOR ACCOUNT ---<<<
+                    onTap: () { 
                       Navigator.push(
-                        context, // Uses the context from ProfileScreen
+                        context, 
                         MaterialPageRoute(builder: (context) => const AccountDetailsScreen()),
                       ).then((dataWasUpdated) {
-                        // If AccountDetailsScreen pops and indicates data was updated (e.g., returns true)
                         if (dataWasUpdated == true && mounted) {
-                          _loadUserData(); // Refresh the profile data on this screen
+                          _loadUserData(); 
                         }
                       });
                     }
                   ),
-                  _buildProfileOptionItem(assetName: 'family_icon.svg', title: 'Family'),
+                  _buildProfileOptionItem(
+                    assetName: 'allergic_icon.svg', 
+                    title: 'Allergic',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const AllergyListScreen()),
+                      );
+                    },
+                  ),
+                   _buildProfileOptionItem( // <<<--- ADDED FAMILY OPTION ---<<<
+                    assetName: 'family_icon.svg', // You might need to add/change this icon
+                    title: 'Family',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const FamilyScreen()),
+                      );
+                    },
+                  ),
                   _buildProfileOptionItem(assetName: 'reports_icon.svg', title: 'My Reports'),
                   _buildProfileOptionItem(assetName: 'orders_icon.svg', title: 'My Orders'),
                   _buildProfileOptionItem(assetName: 'insurance_icon.svg', title: 'Insurances'),
@@ -258,7 +268,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 20.0),
                     child: OutlinedButton.icon(
                       icon: SvgPicture.asset(
-                        'assets/icons/profile/logout_icon.svg', 
+                        'assets/icons/profile/logout_icon.svg',
                          width: 20, height: 20,
                          colorFilter: ColorFilter.mode(Colors.red.shade700, BlendMode.srcIn),
                          placeholderBuilder: (BuildContext context) => Icon(Icons.exit_to_app, color: Colors.red.shade300),

@@ -18,11 +18,11 @@ class DoctorAppointmentDetailScreen extends StatefulWidget {
 class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final TextEditingController _notesController = TextEditingController();  // Add this line
+  final TextEditingController _notesController = TextEditingController();
 
   DateTime? _selectedDate;
   String? _selectedTimeSlot;
-  bool _isLoading = false;
+  bool _isLoadingSlots = false; // Changed from _isLoading to _isLoadingSlots
   bool _isBooking = false;
   String? _currentUserName;
   List<String> _availableTimeSlots = [];
@@ -31,8 +31,21 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
   void initState() {
     super.initState();
     _fetchCurrentUserName();
-    _selectedDate = DateTime.now(); // Default to today
-    _filterAvailableSlotsForSelectedDate(); // Initial filter
+    _selectedDate = DateTime.now(); 
+    if (widget.doctor.uid.isNotEmpty) { // Ensure doctor UID is valid before fetching
+        _filterAvailableSlotsForSelectedDate(); 
+    } else {
+        debugPrint("[DoctorAppointmentDetailScreen] Error: Doctor UID is empty in initState.");
+        if(mounted){
+            setState(() {
+                _isLoadingSlots = false;
+                _availableTimeSlots = [];
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Error: Doctor information is incomplete.')),
+            );
+        }
+    }
   }
 
   Future<void> _fetchCurrentUserName() async {
@@ -40,23 +53,26 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
     if (currentUser != null) {
       try {
         DocumentSnapshot userDoc = await _firestore.collection('users').doc(currentUser.uid).get();
-        if (mounted) { // Check mounted before setState
+        if (mounted) { 
           setState(() {
             if (userDoc.exists && userDoc.data() != null) {
-              _currentUserName = (userDoc.data() as Map<String, dynamic>)['displayName'] ?? currentUser.displayName ?? 'User';
+              final data = userDoc.data() as Map<String, dynamic>;
+              _currentUserName = data['displayName'] ?? currentUser.displayName ?? 'User';
             } else {
               _currentUserName = currentUser.displayName ?? currentUser.email ?? 'User';
             }
           });
         }
       } catch (e) {
-        debugPrint("Error fetching current user's name: $e");
-         if (mounted) { // Check mounted before setState
+        debugPrint("[DoctorAppointmentDetailScreen] Error fetching current user's name: $e");
+         if (mounted) { 
             setState(() {
               _currentUserName = currentUser.displayName ?? currentUser.email ?? 'User'; // Fallback
             });
          }
       }
+    } else {
+        debugPrint("[DoctorAppointmentDetailScreen] Error: Current user is null in _fetchCurrentUserName.");
     }
   }
 
@@ -68,88 +84,116 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
       lastDate: DateTime.now().add(const Duration(days: 90)), 
     );
     if (picked != null && picked != _selectedDate) {
-      if (mounted) { // Check mounted before setState
+      if (mounted) { 
         setState(() {
           _selectedDate = picked;
           _selectedTimeSlot = null; 
+          _availableTimeSlots = [];
         });
       }
-      _filterAvailableSlotsForSelectedDate();
+      if (widget.doctor.uid.isNotEmpty) {
+        _filterAvailableSlotsForSelectedDate();
+      } else {
+         debugPrint("[DoctorAppointmentDetailScreen] Error: Doctor UID is empty in _selectDate.");
+      }
     }
   }
 
   Future<void> _filterAvailableSlotsForSelectedDate() async {
+    if (_selectedDate == null) {
+        debugPrint("[DoctorAppointmentDetailScreen] _filterAvailableSlotsForSelectedDate: _selectedDate is null.");
+        return;
+    }
+    if (widget.doctor.uid.isEmpty){
+        debugPrint("[DoctorAppointmentDetailScreen] _filterAvailableSlotsForSelectedDate: Doctor UID is empty.");
+        if(mounted) {
+            setState(() => _isLoadingSlots = false);
+             ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Cannot load slots: Doctor ID missing.')),
+            );
+        }
+        return;
+    }
+
+    debugPrint("[DoctorAppointmentDetailScreen] Filtering slots for doctor: ${widget.doctor.uid} on date: $_selectedDate");
+
     if (mounted) {
       setState(() {
-        _isLoading = true;  // Changed from _isLoadingSlots to _isLoading
+        _isLoadingSlots = true; 
       });
     }
     
     try {
       String dayOfWeek = DateFormat('EEEE').format(_selectedDate!).toLowerCase();
+      debugPrint("[DoctorAppointmentDetailScreen] Day of week: $dayOfWeek");
       
       DocumentSnapshot doctorDoc = await _firestore.collection('doctors').doc(widget.doctor.uid).get();
+      debugPrint("[DoctorAppointmentDetailScreen] Fetched doctor document: ${doctorDoc.id}, Exists: ${doctorDoc.exists}");
       
       if (!doctorDoc.exists) {
-        throw Exception('Doctor document not found');
+        throw Exception('Doctor document not found for UID: ${widget.doctor.uid}');
       }
 
       Map<String, dynamic> doctorData = doctorDoc.data() as Map<String, dynamic>;
+      debugPrint("[DoctorAppointmentDetailScreen] Doctor data: $doctorData");
       
-      // Improved error handling and type checking
       if (!doctorData.containsKey('availableSlots')) {
-        debugPrint('No availableSlots field found in doctor document');
+        debugPrint('[DoctorAppointmentDetailScreen] No availableSlots field found in doctor document');
         if (mounted) {
           setState(() {
             _availableTimeSlots = [];
-            _isLoading = false;
+            _isLoadingSlots = false;
           });
         }
         return;
       }
 
-      var availableSlots = doctorData['availableSlots'];
-      if (availableSlots == null || !availableSlots.containsKey(dayOfWeek)) {
-        debugPrint('No slots available for $dayOfWeek');
+      var availableSlotsMap = doctorData['availableSlots'] as Map<String, dynamic>?; // Cast to nullable map
+      if (availableSlotsMap == null || !availableSlotsMap.containsKey(dayOfWeek) || availableSlotsMap[dayOfWeek] == null) {
+        debugPrint('[DoctorAppointmentDetailScreen] No slots available for $dayOfWeek or slots data is null/missing.');
         if (mounted) {
           setState(() {
             _availableTimeSlots = [];
-            _isLoading = false;
+            _isLoadingSlots = false;
           });
         }
         return;
       }
-
-      // Properly handle the data type conversion
-      List<String> slots = List<String>.from(availableSlots[dayOfWeek] ?? []);
       
-      // Get booked appointments
+      List<String> slots = List<String>.from(availableSlotsMap[dayOfWeek] as List<dynamic>? ?? []);
+      debugPrint("[DoctorAppointmentDetailScreen] Initial slots for $dayOfWeek: $slots");
+      
       String formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate!);
+      debugPrint("[DoctorAppointmentDetailScreen] Querying appointments for doctor ${widget.doctor.uid} on $formattedDate");
       QuerySnapshot appointmentsSnapshot = await _firestore
           .collection('appointments')
           .where('doctorId', isEqualTo: widget.doctor.uid)
           .where('appointmentDate', isEqualTo: formattedDate)
-          .where('status', isEqualTo: 'booked')
+          .where('status', whereIn: ['booked', 'confirmed', 'video_link_added']) // Consider all relevant statuses
           .get();
+      debugPrint("[DoctorAppointmentDetailScreen] Found ${appointmentsSnapshot.docs.length} booked/confirmed appointments.");
           
       List<String> bookedSlots = appointmentsSnapshot.docs
           .map((doc) => (doc.data() as Map<String, dynamic>)['appointmentTime'] as String)
           .toList();
+      debugPrint("[DoctorAppointmentDetailScreen] Booked slots: $bookedSlots");
           
       slots.removeWhere((slot) => bookedSlots.contains(slot));
+      debugPrint("[DoctorAppointmentDetailScreen] Final available slots: $slots");
       
       if (mounted) {
         setState(() {
           _availableTimeSlots = slots;
-          _isLoading = false;
+          _isLoadingSlots = false;
         });
       }
-    } catch (e) {
-      debugPrint('Error filtering slots: $e');
+    } catch (e, s) {
+      debugPrint('[DoctorAppointmentDetailScreen] Error filtering slots: $e');
+      debugPrint('[DoctorAppointmentDetailScreen] Stacktrace: $s');
       if (mounted) {
         setState(() {
           _availableTimeSlots = [];
-          _isLoading = false;
+          _isLoadingSlots = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading time slots: ${e.toString()}')),
@@ -160,34 +204,51 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
 
 
   Future<void> _bookAppointment() async {
-    if (_selectedTimeSlot == null || _selectedDate == null) {  // Changed from _selectedSlot to _selectedTimeSlot
+    if (_selectedTimeSlot == null || _selectedDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select a date and time slot')),
       );
       return;
     }
+     if (_auth.currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User not logged in. Please restart.')),
+      );
+      return;
+    }
+     if (_currentUserName == null) {
+      await _fetchCurrentUserName();
+      if(_currentUserName == null && mounted){
+         ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not fetch user details. Try again.')),
+        );
+        return;
+      }
+    }
+
+
+    setState(() {
+      _isBooking = true;
+    });
 
     try {
-      setState(() {
-        _isBooking = true;
-      });
-
       String formattedDate = DateFormat('yyyy-MM-dd').format(_selectedDate!);
       
-      // Check for existing appointments at the same time
+      // Client-side check for conflicting appointments (optional, but good UX)
+      // The primary check should ideally be via security rules or Cloud Functions for atomicity
       QuerySnapshot existingAppointments = await _firestore
           .collection('appointments')
           .where('userId', isEqualTo: _auth.currentUser!.uid)
           .where('appointmentDate', isEqualTo: formattedDate)
           .where('appointmentTime', isEqualTo: _selectedTimeSlot)
-          .where('status', isEqualTo: 'booked')
+          .where('status', whereIn: ['booked', 'confirmed', 'video_link_added'])
           .get();
 
       if (existingAppointments.docs.isNotEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('You already have an appointment scheduled for this time slot'),
+              content: Text('You already have an appointment scheduled for this time slot.'),
               backgroundColor: Colors.red,
             ),
           );
@@ -198,11 +259,9 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
         return;
       }
 
-      // Create appointment ID with sanitized time slot
       String sanitizedTimeSlot = _selectedTimeSlot!.replaceAll(' ', '_').replaceAll(':', '_');
       String appointmentId = '${widget.doctor.uid}_${_auth.currentUser!.uid}_${formattedDate}_$sanitizedTimeSlot';
 
-      // Convert time slot to DateTime
       final timeComponents = DateFormat('hh:mm a').parse(_selectedTimeSlot!);
       final appointmentDateTime = DateTime(
         _selectedDate!.year,
@@ -210,12 +269,10 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
         _selectedDate!.day,
         timeComponents.hour,
         timeComponents.minute,
-      ).toUtc(); // Convert to UTC
+      ); 
 
-      // Ensure we have a valid user name
-      final String userName = _currentUserName ?? 'Unknown User';
+      final String userName = _currentUserName!;
 
-      // Create appointment with exact field structure matching security rules
       final appointmentData = {
         'appointmentId': appointmentId,
         'userId': _auth.currentUser!.uid,
@@ -225,13 +282,19 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
         'doctorSpeciality': widget.doctor.specialization,
         'appointmentDate': formattedDate,
         'appointmentTime': _selectedTimeSlot!,
-        'dateTimeFull': appointmentDateTime, // UTC DateTime
+        'dateTimeFull': Timestamp.fromDate(appointmentDateTime.toUtc()),
         'category': widget.doctor.specialization,
         'status': 'booked',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
-        'notes': _notesController.text.trim(),
+        'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(), // Send null if empty
+        'appointmentType': 'in_person', // For this screen
+        // Fields for video consultation, set to null or default for in-person
+        'videoConsultationLink': null,
+        'isVideoLinkShared': false,
+        'diagnosis': null, // Diagnosis usually added by doctor later
       };
+      debugPrint("[DoctorAppointmentDetailScreen] Attempting to create appointment with data: $appointmentData");
 
       await _firestore.collection('appointments').doc(appointmentId).set(appointmentData);
 
@@ -239,10 +302,11 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Appointment booked successfully!')),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, true); // Indicate success
       }
-    } catch (e) {
-      debugPrint('Error booking appointment: $e');
+    } catch (e,s) {
+      debugPrint('[DoctorAppointmentDetailScreen] Error booking appointment: $e');
+      debugPrint('[DoctorAppointmentDetailScreen] Stacktrace: $s');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to book appointment: ${e.toString()}')),
@@ -255,6 +319,12 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
         });
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
   }
 
   @override
@@ -298,16 +368,16 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(doctor.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                          Text(doctor.specialization, style: TextStyle(fontSize: 16, color: Colors.grey[700])), // Corrected
+                          Text(doctor.specialization, style: TextStyle(fontSize: 16, color: Colors.grey[700])), 
                           if (qualificationsText != 'Not specified')
                             Padding(
                               padding: const EdgeInsets.only(top: 4.0),
-                              child: Text(qualificationsText, style: TextStyle(fontSize: 14, color: Colors.grey[600])), // Corrected
+                              child: Text(qualificationsText, style: TextStyle(fontSize: 14, color: Colors.grey[600])), 
                             ),
                           if (doctor.yearsOfExperience != null)
                              Padding(
                               padding: const EdgeInsets.only(top: 4.0),
-                              child: Text('${doctor.yearsOfExperience} years experience', style: TextStyle(fontSize: 14, color: Colors.grey[600])), // Corrected
+                              child: Text('${doctor.yearsOfExperience} years experience', style: TextStyle(fontSize: 14, color: Colors.grey[600])), 
                             ),
                            if (doctor.consultationFee != null)
                              Padding(
@@ -345,7 +415,7 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
                     Text(
                       _selectedDate == null
                           ? 'Tap to select a date'
-                          : DateFormat('EEE, dd MMM, yyyy').format(_selectedDate!), // Corrected format
+                          : DateFormat('EEE, dd MMM, yyyy').format(_selectedDate!), 
                       style: const TextStyle(fontSize: 16),
                     ),
                     const Icon(Icons.calendar_today, color: Colors.teal),
@@ -357,7 +427,7 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
 
             const Text('Select Time Slot', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            _isLoading // General loading for slots
+            _isLoadingSlots 
                 ? const Center(child: Padding(
                     padding: EdgeInsets.all(8.0),
                     child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080))),
@@ -399,8 +469,25 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
                           );
                         },
                       ),
+            const SizedBox(height: 20),
+            const Text('Notes (Optional)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _notesController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: 'Any specific information for the doctor...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey.shade400),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Colors.teal, width: 2),
+                ),
+              ),
+            ),
             const SizedBox(height: 30),
-
             SizedBox(
               width: double.infinity,
               height: 50,
@@ -411,8 +498,8 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: _isBooking // Use _isBooking for the button's loading state
-                    ? const CircularProgressIndicator(color: Colors.white)
+                child: _isBooking 
+                    ? const SizedBox(height:24, width:24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
                     : const Text('Confirm Appointment', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
               ),
             ),
@@ -421,11 +508,5 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _notesController.dispose();
-    super.dispose();
   }
 }
