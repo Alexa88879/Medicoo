@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:intl/intl.dart';
 
-import 'admin_data_seeder_screen.dart';
+// import 'admin_data_seeder_screen.dart'; // Removed as it's no longer used here
 import 'login_screen.dart';
 import 'select_category_screen.dart';
 import 'nearby_screen_gplaces.dart';
@@ -256,8 +256,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return "User";
   }
 
-  // Remove _fetchUserDataInternal method as it's unused
-
   Future<DocumentSnapshot?> _fetchLatestPrescriptionInternal() async {
     if (_currentUser == null) return null;
     try {
@@ -347,15 +345,11 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         break;
       case 3:
-        // Assuming 'Nearby' should also navigate within its own stack if it had one,
-        // or use the home navigator for simplicity if it's a simple screen.
-        // For now, pushing on homeNavigatorKey as an example. If Nearby becomes a Navigator, use its key.
         _homeNavigatorKey.currentState?.pushReplacement(
           MaterialPageRoute(builder: (context) => const NearbyScreenWithGooglePlaces()),
         );
         break;
       case 4:
-        // Similarly for 'Profile'
         _homeNavigatorKey.currentState?.pushReplacement(
           MaterialPageRoute(builder: (context) => const ProfileScreen()),
         );
@@ -364,11 +358,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _addNewAppointmentAction() {
-    Navigator.of(context).push( // Use root navigator or context of home tab's navigator
+    Navigator.of(context).push( 
       MaterialPageRoute(builder: (context) => const SelectCategoryScreen()),
     ).then((valueFromNextScreen) {
       if (valueFromNextScreen == true || valueFromNextScreen == null) {
-        if (_selectedIndex == 0) { // Only refresh if on home tab
+        if (_selectedIndex == 0) { 
           _fetchUpcomingAppointmentsInternal().then((appointments) {
             if (mounted && appointments != null) {
               setState(() => _upcomingAppointments = appointments);
@@ -407,13 +401,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             actions: [
-              IconButton(
-                icon: const Icon(Icons.construction, color: Colors.yellow),
-                tooltip: 'Seed Data (Admin)',
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminDataSeederScreen()));
-                },
-              ),
+              // IconButton( // Removed Seed Data Button
+              //   icon: const Icon(Icons.construction, color: Colors.yellow),
+              //   tooltip: 'Seed Data (Admin)',
+              //   onPressed: () {
+              //     Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminDataSeederScreen()));
+              //   },
+              // ),
               IconButton(
                 icon: const Icon(Icons.logout, color: Colors.white),
                 tooltip: 'Logout',
@@ -471,13 +465,6 @@ class _HomeScreenState extends State<HomeScreen> {
           case 1: // Records
             currentNavigatorState = _recordsNavigatorKey.currentState;
             break;
-          // Add cases for other Navigators if they are implemented
-          // case 3: // Nearby
-          //   currentNavigatorState = _nearbyNavigatorKey.currentState;
-          //   break;
-          // case 4: // Profile
-          //   currentNavigatorState = _profileNavigatorKey.currentState;
-          //   break;
           default:
             currentNavigatorState = null;
             break;
@@ -486,15 +473,12 @@ class _HomeScreenState extends State<HomeScreen> {
         if (currentNavigatorState != null && currentNavigatorState.canPop()) {
           currentNavigatorState.pop();
         }
-        // If no navigator can pop (e.g., at the root of the current tab's stack),
-        // you might want to implement a double-tap to exit or a confirmation dialog.
-        // For now, it prevents popping the HomeScreen itself via back button if a tab's navigator can't pop.
       },
       child: Scaffold(
         body: IndexedStack(
           index: _selectedIndex,
           children: [
-            Navigator( // Home tab with its own navigator and RefreshIndicator
+            Navigator( 
               key: _homeNavigatorKey,
               onGenerateRoute: (routeSettings) {
                 return MaterialPageRoute(
@@ -506,10 +490,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
-            _widgetOptions[1], // Records tab (already a Navigator)
-            _widgetOptions[2], // Assistant tab
-            _widgetOptions[3], // Nearby tab
-            _widgetOptions[4], // Profile tab
+            _widgetOptions[1], 
+            _widgetOptions[2], 
+            _widgetOptions[3], 
+            _widgetOptions[4], 
           ],
         ),
         bottomNavigationBar: BottomNavigationBar(
@@ -530,11 +514,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () => _onItemTapped(2),
                 customBorder: const CircleBorder(),
                 child: Padding(
-                  padding: const EdgeInsets.all(8.0), // Padding for tap area
+                  padding: const EdgeInsets.all(8.0), 
                   child: SvgPicture.asset('assets/icons/medicall_icon.svg',
                       width: 28,
                       height: 28,
-                      colorFilter: const ColorFilter.mode(selectedColor, BlendMode.srcIn)), // Always selected color for prominent FAB-like button
+                      colorFilter: const ColorFilter.mode(selectedColor, BlendMode.srcIn)), 
                 ),
               ),
               label: 'Assistant',
@@ -566,9 +550,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- Helper methods to build UI sections for Home Tab ---
-  // These methods are used by _buildHomeTabBody
-
   Widget _buildUserInfoCard(Map<String, dynamic>? userData) {
     if (userData == null) return const SizedBox.shrink();
     String name = userData['displayName'] ?? 'N/A';
@@ -581,7 +562,7 @@ class _HomeScreenState extends State<HomeScreen> {
       margin: const EdgeInsets.only(left: 16.0, right: 16.0, top: 20.0, bottom: 20.0),
       elevation: 3.0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15.0)),
-      color: const Color(0xFFE0F2F1), // Light teal background
+      color: const Color(0xFFE0F2F1), 
       child: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Row(
@@ -622,7 +603,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildInfoText(String label, String value) {
     return RichText(
       text: TextSpan(
-        style: TextStyle(fontSize: 15, color: Colors.grey[850]), // Default text style
+        style: TextStyle(fontSize: 15, color: Colors.grey[850]), 
         children: <TextSpan>[
           TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF00695C))),
           TextSpan(text: value, style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w400)),
@@ -634,18 +615,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildActionButtonsGrid() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0.0), // Reduced vertical padding
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0.0), 
       child: GridView.count(
         crossAxisCount: 2,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         mainAxisSpacing: 15.0,
         crossAxisSpacing: 15.0,
-        // childAspectRatio: 1.0, // Adjust aspect ratio if needed, default is 1.0
         children: [
           InkWell(
             onTap: _addNewAppointmentAction,
-            child: _buildActionButton( // This is the one that returns a Container
+            child: _buildActionButton( 
               iconPath: 'assets/icons/medical_icon.svg',
               label: 'Book Doctor Appointment',
             ),
@@ -656,12 +636,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 MaterialPageRoute(builder: (context) => const BookLabTestScreen()),
               );
             },
-            child: _buildActionButton( // This is the one that returns a Container
+            child: _buildActionButton( 
               iconPath: 'assets/icons/labs_icon.svg',
               label: 'Book Lab Test',
             ),
           ),
-          _actionButton( // This is the one that returns an ElevatedButton
+          _actionButton( 
             iconPath: 'assets/icons/order_icon_1.svg',
             label: 'Order Medicine',
             onTap: () {
@@ -670,7 +650,7 @@ class _HomeScreenState extends State<HomeScreen> {
               }
             },
           ),
-          _actionButton( // This is the one that returns an ElevatedButton
+          _actionButton( 
             iconPath: 'assets/icons/video_icon.svg',
             label: 'Video Consultation',
             onTap: () {
@@ -686,7 +666,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // This _buildActionButton returns a styled Container for use with InkWell
   Widget _buildActionButton({
     required String iconPath,
     required String label,
@@ -709,7 +688,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           SvgPicture.asset(
             iconPath,
-            width: 32, // Slightly smaller icon
+            width: 32, 
             height: 32,
             colorFilter: const ColorFilter.mode(Color(0xFF008080), BlendMode.srcIn),
           ),
@@ -718,7 +697,7 @@ class _HomeScreenState extends State<HomeScreen> {
             label,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              fontSize: 13, // Slightly smaller text
+              fontSize: 13, 
               fontWeight: FontWeight.w500,
               color: Color(0xFF008080),
             ),
@@ -728,8 +707,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // This _buildActionButtonsSection seems to be an alternative or older version.
-  // It's not currently called in _buildHomeTabBody. I'm keeping it and indenting it.
   Widget _buildActionButtonsSection() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -739,11 +716,11 @@ class _HomeScreenState extends State<HomeScreen> {
         physics: const NeverScrollableScrollPhysics(),
         mainAxisSpacing: 12.0,
         crossAxisSpacing: 12.0,
-        childAspectRatio: 1.4, // This makes buttons wider than tall
+        childAspectRatio: 1.4, 
         children: [
           InkWell(
             onTap: _addNewAppointmentAction,
-            child: _buildActionButton( // Uses the Container version
+            child: _buildActionButton( 
               iconPath: 'assets/icons/medical_icon.svg',
               label: 'Book Doctor Appointment',
             ),
@@ -754,37 +731,34 @@ class _HomeScreenState extends State<HomeScreen> {
                 MaterialPageRoute(builder: (context) => const BookLabTestScreen()),
               );
             },
-            child: _buildActionButton( // Uses the Container version
+            child: _buildActionButton( 
               iconPath: 'assets/icons/labs_icon.svg',
               label: 'Book Lab Test',
             ),
           ),
-          // This section originally might have had more buttons like 'Order Medicine', 'Video Consultation'
-          // using the _buildActionButton (Container) style.
         ],
       ),
     );
   }
 
-  // This _actionButton (lowercase 'a') returns an ElevatedButton
   Widget _actionButton({required String iconPath, required String label, required VoidCallback onTap}) {
     return ElevatedButton(
       onPressed: onTap,
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF008080), // For ripple and text if not overridden
+        foregroundColor: const Color(0xFF008080), 
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12.0), side: BorderSide(color: Colors.grey[300]!, width: 1.0)),
-        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 10.0), // Adjusted padding
+        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 10.0), 
         elevation: 2.0,
-        shadowColor: Colors.grey.withAlpha(51), // Softer shadow
+        shadowColor: Colors.grey.withAlpha(51), 
       ),
-      child: Row( // Changed to Row for better icon-text alignment
-        mainAxisAlignment: MainAxisAlignment.start, // Align content to the start
+      child: Row( 
+        mainAxisAlignment: MainAxisAlignment.start, 
         children: [
           SvgPicture.asset(iconPath, width: 26, height: 26, colorFilter: const ColorFilter.mode(Color(0xFF008080), BlendMode.srcIn)),
-          const SizedBox(width: 10), // Spacing between icon and text
-          Expanded( // To ensure text wraps and uses available space
+          const SizedBox(width: 10), 
+          Expanded( 
             child: Text(
               label,
               style: TextStyle(color: Colors.grey[800], fontSize: 13.5, fontWeight: FontWeight.w500),
@@ -805,7 +779,7 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
           child: Text("No prescriptions available.", style: TextStyle(color: Colors.grey)));
     }
-    if (_latestPrescription == null) return const SizedBox.shrink(); // Should be covered by above, but good for safety
+    if (_latestPrescription == null) return const SizedBox.shrink(); 
 
     String prescriptionDetails;
     if (_latestPrescription!.exists) {
@@ -827,7 +801,7 @@ class _HomeScreenState extends State<HomeScreen> {
         prescriptionDetails = "Latest prescription from Dr. $doctorName on $dateIssuedFormatted has no listed medications.";
       }
     } else {
-      prescriptionDetails = "No prescriptions available at the moment."; // Should not happen if _latestPrescription is not null and exists
+      prescriptionDetails = "No prescriptions available at the moment."; 
     }
 
     return Padding(
@@ -839,14 +813,14 @@ class _HomeScreenState extends State<HomeScreen> {
         color: Colors.white,
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-          leading: SvgPicture.asset('assets/icons/medical_icon.svg', // Consistent icon
+          leading: SvgPicture.asset('assets/icons/medical_icon.svg', 
               width: 28,
               height: 28,
               colorFilter: const ColorFilter.mode(Color(0xFF008080), BlendMode.srcIn)),
           title: const Text('Latest Prescription',
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Color(0xFF00695C))),
-          iconColor: const Color(0xFF008080), // Teal when expanded
-          collapsedIconColor: Colors.grey[600], // Grey when collapsed
+          iconColor: const Color(0xFF008080), 
+          collapsedIconColor: Colors.grey[600], 
           childrenPadding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 16.0, top: 0),
           children: <Widget>[
             Padding(
@@ -870,9 +844,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildAppointmentsSection() {
-    if (_isHomeDataLoading && _upcomingAppointments.isEmpty) return const SizedBox.shrink(); // Show nothing while loading if no data yet
+    if (_isHomeDataLoading && _upcomingAppointments.isEmpty) return const SizedBox.shrink(); 
     if (_upcomingAppointments.isEmpty && !_isHomeDataLoading) {
-      // Show "No appointments" message only after loading is complete and list is empty
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
         child: Column(
@@ -895,7 +868,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 12),
             Card(
-              elevation: 0, // Flat card for placeholder
+              elevation: 0, 
               color: Colors.grey[100],
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               child: const Padding(
@@ -907,10 +880,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
-    if (_upcomingAppointments.isEmpty) return const SizedBox.shrink(); // Should be covered, but for safety
+    if (_upcomingAppointments.isEmpty) return const SizedBox.shrink(); 
 
     return Padding(
-      padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 16.0, top: 0.0), // No top padding if data exists
+      padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 16.0, top: 0.0), 
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -947,7 +920,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
               if (data['category'] == 'Lab Test' || data['labTestName'] != null) {
                 profileIconWidget = CircleAvatar(
-                    backgroundColor: Colors.teal.withAlpha(30), // Light teal background for icon
+                    backgroundColor: Colors.teal.withAlpha(30), 
                     child: SvgPicture.asset('assets/icons/labs_icon.svg',
                         width: 22, height: 22, colorFilter: const ColorFilter.mode(Color(0xFF008080), BlendMode.srcIn)));
               } else if (data['appointmentType'] == 'video') {
@@ -956,7 +929,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: SvgPicture.asset('assets/icons/video_icon.svg',
                         width: 22, height: 22, colorFilter: const ColorFilter.mode(Color(0xFF008080), BlendMode.srcIn)));
               }
-              // Add more conditions for other appointment types or categories if needed
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10.0),
@@ -975,7 +947,7 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             }).toList(),
           ),
-          if (_upcomingAppointments.isNotEmpty) // Show "View All" only if there are appointments
+          if (_upcomingAppointments.isNotEmpty) 
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
@@ -1026,8 +998,8 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
         leading: CircleAvatar(
-          radius: 22, // Consistent radius
-          backgroundColor: Colors.transparent, // Icon provides its own background if needed
+          radius: 22, 
+          backgroundColor: Colors.transparent, 
           child: profileWidget,
         ),
         title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15.5, color: Color(0xFF004D40))),

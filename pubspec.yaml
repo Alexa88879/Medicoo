@@ -7,6 +7,7 @@ environment:
   sdk: '>=3.1.5 <4.0.0'
 
 dependencies:
+  
   google_generative_ai: ^0.4.7
   speech_to_text: ^7.0.0  # Use this more stable version
   flutter_tts: ^4.2.2
@@ -27,11 +28,14 @@ dependencies:
   http: ^1.4.0
   google_maps_flutter: ^2.12.2
   url_launcher: ^6.3.1
+  google_fonts: ^6.1.0 
 
 dev_dependencies:
+  
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.0
+  flutter_launcher_icons: ^0.13.1 # Or the latest version
 
 flutter:
   uses-material-design: true
@@ -41,17 +45,16 @@ flutter:
     - assets/images/
     - assets/sign_up_icon/
     - assets/icons/profile/
-
-  fonts:
-    - family: Inter
-      fonts:
-        - asset: assets/fonts/Inter-Regular.ttf
-        - asset: assets/fonts/Inter-Medium.ttf
-          weight: 500
-        - asset: assets/fonts/Inter-SemiBold.ttf
-          weight: 600
-        - asset: assets/fonts/Inter-Bold.ttf
-          weight: 700
+flutter_launcher_icons:
+  android: "launcher_icon" # can be true, false, or "launcher_icon"
+  ios: true
+  image_path: "assets/images/logo.png" # Path to your master logo image
+  min_sdk_android: 21 # Optional
+  remove_alpha_ios: true
+  # You can also specify adaptive icon settings for Android:
+  # adaptive_icon_background: "#FFFFFF"
+  # adaptive_icon_foreground: "assets/images/new_app_logo_foreground.png"
+  
 
   # To add assets to your application, add an assets section, like this:
   # assets:

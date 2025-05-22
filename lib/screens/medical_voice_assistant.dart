@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/voice_assistant_service.dart';
+import '../services/voice_assistant_service.dart'; // Assuming this file exists and is updated
 
 class MedicalVoiceAssistant extends StatefulWidget {
   const MedicalVoiceAssistant({Key? key}) : super(key: key);
@@ -28,22 +28,29 @@ class _MedicalVoiceAssistantState extends State<MedicalVoiceAssistant> with Sing
       duration: const Duration(seconds: 2),
       vsync: this,
     )..repeat(reverse: true);
-    
+
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.5).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
   }
 
   Future<void> _initializeAssistant() async {
+    // Initialize the voice assistant service (STT, TTS, Gemini Model)
     await _assistantService.initialize();
-    _addAssistantMessage("Hello! I'm your medical assistant. How can I help you today?");
+    // Add an initial greeting message from the assistant
+    _addMessageToChat("Hello! I'm your medical assistant. How can I help you today?", isUser: false);
   }
 
-  void _addAssistantMessage(String text) {
+  // Helper to add messages to the chat UI and scroll
+  void _addMessageToChat(String text, {required bool isUser}) {
+    if (!mounted) return;
     setState(() {
-      _messages.add(ChatMessage(text: text, isUser: false));
+      _messages.add(ChatMessage(text: text, isUser: isUser));
     });
-    _scrollToBottom();
+    // Scroll to the bottom after a short delay to allow UI to update
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) _scrollToBottom();
+    });
   }
 
   void _scrollToBottom() {
@@ -58,47 +65,61 @@ class _MedicalVoiceAssistantState extends State<MedicalVoiceAssistant> with Sing
 
   Future<void> _handleVoiceInput() async {
     if (_isLoading) return;
-    
+
+    if (!mounted) return;
     setState(() => _isLoading = true);
-    
+
     try {
-      await _assistantService.startListening((text) async {
-        setState(() {
-          _messages.add(ChatMessage(text: text, isUser: true));
-        });
-        _scrollToBottom();
-        
-        await _assistantService.stopListening();
-        
-        _getAndDisplayResponse(text);
-      });
+      // Start listening for voice input
+      // Removed onError and onListeningStatusChange as they are not defined in the service's startListening method
+      await _assistantService.startListening((recognizedText) async {
+        if (!mounted) return;
+
+        // Add user's spoken text to the chat
+        _addMessageToChat(recognizedText, isUser: true);
+
+        // Stop listening (if not handled automatically by the service)
+        // await _assistantService.stopListening(); // Uncomment if your service requires explicit stop
+
+        // Get and display Gemini's response
+        await _getAndDisplayResponse(recognizedText);
+      }
+      // It's assumed that error handling and status changes for STT
+      // are handled within the _assistantService.startListening method itself,
+      // or the method will throw an exception on error which is caught below.
+      );
     } catch (e) {
-      _handleError("Sorry, I couldn't hear you. Please try again.");
+      _handleError("An error occurred with voice input. Please try again. Details: $e");
+    }
+    // _isLoading will be set to false in _getAndDisplayResponse or _handleError
+  }
+
+  Future<void> _getAndDisplayResponse(String userQuery) async {
+    if (!mounted) return;
+
+    try {
+      // Pass the entire conversation history (_messages) to the service
+      final assistantResponse = await _assistantService.getGeminiResponse(userQuery, _messages);
+
+      if (!mounted) return;
+      _addMessageToChat(assistantResponse, isUser: false);
+      await _assistantService.speak(assistantResponse); // Speak the response
+    } catch (e) {
+      _handleError("I apologize, but I encountered an error processing your request. Details: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
-  Future<void> _getAndDisplayResponse(String query) async {
-    try {
-      final response = await _assistantService.getGeminiResponse(query);
-      
-      setState(() {
-        _messages.add(ChatMessage(text: response, isUser: false));
-        _isLoading = false;
-      });
-      _scrollToBottom();
-      
-      await _assistantService.speak(response);
-    } catch (e) {
-      _handleError("I apologize, but I encountered an error. Please try again.");
+  void _handleError(String errorMessage) {
+    if (!mounted) return;
+    _addMessageToChat(errorMessage, isUser: false);
+    if (mounted && _assistantService != null) { // Check if service is available before speaking
+        _assistantService.speak(errorMessage); // Speak the error message
     }
-  }
-
-  void _handleError(String message) {
-    setState(() {
-      _messages.add(ChatMessage(text: message, isUser: false));
-      _isLoading = false;
-    });
-    _scrollToBottom();
+    setState(() => _isLoading = false); // Ensure loading is reset on error
   }
 
   @override
@@ -107,29 +128,29 @@ class _MedicalVoiceAssistantState extends State<MedicalVoiceAssistant> with Sing
       appBar: AppBar(
         title: const Text('Medical Voice Assistant'),
         backgroundColor: const Color(0xFF008080),
-        actions: [
-          /*//IconButton(
-            icon: const Icon(Icons.help_outline),
-            onPressed: () => _showHelpDialog(context),
-          ),*/
-        ],
+        // actions: [
+        //   IconButton(
+        //     icon: const Icon(Icons.help_outline),
+        //     onPressed: () => _showHelpDialog(context), // If you want a help dialog
+        //   ),
+        // ],
       ),
       body: Stack(
         children: [
           // Chat messages
           Opacity(
-            opacity: _isLoading ? 0.3 : 1.0,
+            opacity: _isLoading ? 0.5 : 1.0, // Slightly dim background when loading
             child: ListView.builder(
               controller: _scrollController,
               itemCount: _messages.length,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.only(left:16, right:16, top:16, bottom: 90), // Increased bottom padding for FAB
               itemBuilder: (context, index) {
                 final message = _messages[index];
                 return ChatBubble(message: message);
               },
             ),
           ),
-          
+
           // Loading indicator
           if (_isLoading)
             Center(
@@ -142,16 +163,16 @@ class _MedicalVoiceAssistantState extends State<MedicalVoiceAssistant> with Sing
                       return Transform.scale(
                         scale: _pulseAnimation.value,
                         child: Container(
-                          width: 60,
-                          height: 60,
+                          width: 70, // Slightly larger pulse
+                          height: 70,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF008080),
+                            color: const Color(0xFF008080).withOpacity(0.8),
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF008080).withOpacity(0.3),
-                                blurRadius: 20,
-                                spreadRadius: 5,
+                                color: const Color(0xFF008080).withOpacity(0.4),
+                                blurRadius: 25,
+                                spreadRadius: 10,
                               ),
                             ],
                           ),
@@ -159,9 +180,9 @@ class _MedicalVoiceAssistantState extends State<MedicalVoiceAssistant> with Sing
                       );
                     },
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 25),
                   Text(
-                    _assistantService.isListening ? 'Listening...' : 'Processing...',
+                    _assistantService.isListening ? 'Listening...' : 'Thinking...',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -171,20 +192,22 @@ class _MedicalVoiceAssistantState extends State<MedicalVoiceAssistant> with Sing
                 ],
               ),
             ),
-          
+
           // Mic button
           Positioned(
-            bottom: 16,
+            bottom: 20, // Adjusted position
             left: 0,
             right: 0,
             child: Center(
               child: FloatingActionButton(
                 onPressed: _isLoading ? null : _handleVoiceInput,
-                backgroundColor: const Color(0xFF008080),
+                backgroundColor: _isLoading ? Colors.grey : const Color(0xFF008080),
+                tooltip: 'Tap to speak',
+                elevation: _isLoading ? 0 : 6,
                 child: Icon(
                   _assistantService.isListening ? Icons.mic : Icons.mic_none,
                   color: Colors.white,
-                  size: 28,
+                  size: 30, // Slightly larger icon
                 ),
               ),
             ),
@@ -203,16 +226,16 @@ class _MedicalVoiceAssistantState extends State<MedicalVoiceAssistant> with Sing
   }
 }
 
-// Update the getGeminiResponse method in VoiceAssistantService
-
-
+// ChatMessage class
 class ChatMessage {
   final String text;
   final bool isUser;
+  final DateTime timestamp; // Added timestamp
 
-  ChatMessage({required this.text, required this.isUser});
+  ChatMessage({required this.text, required this.isUser}) : timestamp = DateTime.now();
 }
 
+// ChatBubble class (UI for displaying messages)
 class ChatBubble extends StatelessWidget {
   final ChatMessage message;
 
@@ -226,15 +249,20 @@ class ChatBubble extends StatelessWidget {
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
-        margin: const EdgeInsets.symmetric(vertical: 4),
+        margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 8), // Added horizontal margin
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: message.isUser ? const Color(0xFF008080) : Colors.grey[200],
-          borderRadius: BorderRadius.circular(20),
+          color: message.isUser ? Theme.of(context).primaryColor : Colors.grey[200],
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(20),
+            topRight: const Radius.circular(20),
+            bottomLeft: message.isUser ? const Radius.circular(20) : const Radius.circular(4),
+            bottomRight: message.isUser ? const Radius.circular(4) : const Radius.circular(20),
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 4,
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 5,
               offset: const Offset(0, 2),
             ),
           ],

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // Make sure this is imported
+import 'package:google_fonts/google_fonts.dart'; // Import google_fonts
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart'; // Make sure this is imported
 import 'firebase_options.dart';
@@ -27,31 +28,63 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Medicoo',
+      title: 'CureLink',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF008080),
-          primary: const Color(0xFF008080),
+          seedColor: const Color(0xFF008080), // Main teal color
+          primary: const Color(0xFF008080),   // Primary color for components
+          secondary: const Color(0xFF6EB6B4), // A lighter teal for accents
+          // You can define other colors like error, surface, background etc.
         ),
         useMaterial3: true,
-        fontFamily: 'Inter',
+        // Set Poppins as the default font family using google_fonts
+        textTheme: GoogleFonts.poppinsTextTheme(
+          Theme.of(context).textTheme,
+        ).copyWith(
+          // Example of customizing specific text styles if needed
+          bodyLarge: GoogleFonts.poppins(fontSize: 16.0),
+          bodyMedium: GoogleFonts.poppins(fontSize: 14.0),
+          displayLarge: GoogleFonts.poppins(fontSize: 32.0, fontWeight: FontWeight.bold),
+          // Add other styles as needed
+        ),
+        appBarTheme: AppBarTheme(
+          // Ensure AppBar text also uses Poppins by default if not overridden
+          titleTextStyle: GoogleFonts.poppins(
+            color: const Color(0xFF00695C), // Example color for AppBar title
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+          ),
+          iconTheme: const IconThemeData(
+            color: Color(0xFF00695C), // Example color for AppBar icons
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            textStyle: GoogleFonts.poppins( // Ensure buttons use Poppins
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            textStyle: GoogleFonts.poppins(), // Ensure text buttons use Poppins
+          )
+        ),
+        // You can apply Poppins to other specific widget themes as well
       ),
-      // Use StreamBuilder to check auth state and set the initial screen
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
-          // Show a loading indicator while checking auth state (optional but good UX)
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
             );
           }
-          // If user is logged in (snapshot has data and user is not null)
           if (snapshot.hasData && snapshot.data != null) {
             return const HomeScreen();
           }
-          // If user is not logged in
           return const LoginScreen();
         },
       ),
@@ -59,11 +92,9 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// The MyHomePage widget is likely a placeholder from the default Flutter app.
-// You can remove it if it's not being used in your actual navigation flow.
+// Placeholder MyHomePage - can be removed if not used
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
-
   final String title;
 
   @override
@@ -93,7 +124,9 @@ class _MyHomePageState extends State<MyHomePage> {
             const Text('You have pushed the button this many times:'),
             Text(
               '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+              // Example of explicitly using Poppins for a specific Text widget
+              // style: GoogleFonts.poppins(textStyle: Theme.of(context).textTheme.headlineMedium),
+              style: Theme.of(context).textTheme.headlineMedium, // Will inherit Poppins
             ),
           ],
         ),
