@@ -48,7 +48,7 @@ flutter:
 flutter_launcher_icons:
   android: "launcher_icon" # can be true, false, or "launcher_icon"
   ios: true
-  image_path: "assets/images/logo.png" # Path to your master logo image
+  image_path: "assets/images/logu0.png" # Path to your master logo image
   min_sdk_android: 21 # Optional
   remove_alpha_ios: true
   # You can also specify adaptive icon settings for Android:

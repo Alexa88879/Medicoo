@@ -44,6 +44,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             if (userDocSnap.exists) {
               _userData = userDocSnap.data() as Map<String, dynamic>?;
             } else {
+              // Fallback if user document doesn't exist, though it should after signup/login
               _userData = {
                 'displayName': _currentUser?.displayName,
                 'email': _currentUser?.email,
@@ -63,6 +64,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       }
     } else {
+      // If no current user, navigate to login
       if (mounted) {
         setState(() => _isLoading = false);
          Navigator.of(context).pushAndRemoveUntil(
@@ -96,19 +98,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirmLogout == true) {
       try {
+        // Check if the user signed in with Google
         bool isGoogleUser = _auth.currentUser?.providerData
                 .any((userInfo) => userInfo.providerId == GoogleAuthProvider.PROVIDER_ID) ??
             false;
 
         if (isGoogleUser) {
-          await _googleSignIn.signOut();
+          await _googleSignIn.signOut(); // Sign out from Google
           debugPrint("Google user signed out.");
         }
         
-        await _auth.signOut();
+        await _auth.signOut(); // Sign out from Firebase
         debugPrint("Firebase user signed out.");
 
         if (mounted) {
+          // Navigate to the login screen and remove all previous routes
           Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const LoginScreen()),
             (Route<dynamic> route) => false,
@@ -130,6 +134,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String title,
     VoidCallback? onTap,
   }) {
+    // Assuming your assets are in 'assets/icons/profile/'
     String fullAssetPath = 'assets/icons/profile/$assetName';
 
     return ListTile(
@@ -138,11 +143,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         width: 24,
         height: 24,
         colorFilter: ColorFilter.mode(Theme.of(context).primaryColor, BlendMode.srcIn),
+        // Optional: Add a placeholder if SVG fails to load, though SvgPicture handles errors gracefully
         placeholderBuilder: (BuildContext context) => Icon(Icons.error_outline, color: Colors.red.shade300),
       ),
       title: Text(title, style: TextStyle(fontSize: 16, color: Colors.grey.shade800)),
       trailing: Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey.shade500),
       onTap: onTap ?? () {
+        // Default action if onTap is null
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('$title tapped (Not Implemented)')),
         );
@@ -152,6 +159,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Determine display values, handling loading and null cases
     String displayName = _isLoading ? "Loading..." : (_userData?['displayName'] ?? _currentUser?.displayName ?? "Name");
     String displayEmail = _isLoading ? " " : (_userData?['email'] ?? _currentUser?.email ?? "email@example.com");
     String? photoURL = _userData?['photoURL'] ?? _currentUser?.photoURL;
@@ -164,7 +172,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundColor: Colors.white,
         elevation: 1.0,
         iconTheme: IconThemeData(color: iconThemeColor),
-        automaticallyImplyLeading: false,
+        automaticallyImplyLeading: false, // No back button on profile tab root
         actions: [
           IconButton(
             icon: Icon(Icons.notifications_none_outlined, color: iconThemeColor, size: 28),
@@ -176,17 +184,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.white, // Consistent background
       body: _isLoading
           ? Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(iconThemeColor)))
-          : RefreshIndicator(
+          : RefreshIndicator( // Added RefreshIndicator
             onRefresh: _loadUserData,
             color: iconThemeColor,
             child: ListView(
-                padding: const EdgeInsets.all(0),
+                padding: const EdgeInsets.all(0), // No padding for ListView itself
                 children: [
+                  // User Info Header
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                    // decoration: BoxDecoration( // Optional: Add a subtle background or border
+                    //   color: Colors.grey[50],
+                    //   border: Border(bottom: BorderSide(color: Colors.grey[200]!))
+                    // ),
                     child: Row(
                       children: [
                         CircleAvatar(
@@ -221,7 +234,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                   ),
-                  const Divider(height: 1, thickness: 1, color: Color(0xFFEEEEEE)),
+                  const Divider(height: 1, thickness: 1, color: Color(0xFFEEEEEE)), // Use a subtle color
+
+                  // Profile Options
                   _buildProfileOptionItem(
                     assetName: 'account_icon.svg',
                     title: 'Account',
@@ -230,6 +245,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         context, 
                         MaterialPageRoute(builder: (context) => const AccountDetailsScreen()),
                       ).then((dataWasUpdated) {
+                        // If data was updated in AccountDetailsScreen, refresh profile
                         if (dataWasUpdated == true && mounted) {
                           _loadUserData(); 
                         }
@@ -237,7 +253,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     }
                   ),
                   _buildProfileOptionItem(
-                    assetName: 'allergic_icon.svg', 
+                    assetName: 'allergic_icon.svg', // Ensure this asset exists
                     title: 'Allergic',
                     onTap: () {
                       Navigator.push(
@@ -260,18 +276,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildProfileOptionItem(assetName: 'orders_icon.svg', title: 'My Orders'),
                   _buildProfileOptionItem(assetName: 'insurance_icon.svg', title: 'Insurances'),
                   _buildProfileOptionItem(assetName: 'history_icon.svg', title: 'History'),
-                  const Divider(height: 1, thickness: 1, indent: 16, endIndent: 16, color: Color(0xFFEEEEEE)),
+
+                  const Divider(height: 1, thickness: 1, indent: 16, endIndent: 16, color: Color(0xFFEEEEEE)), // Subtle divider
+
                   _buildProfileOptionItem(assetName: 'settings_icon.svg', title: 'Setting'),
                   _buildProfileOptionItem(assetName: 'help_icon.svg', title: 'Help and Support'),
-                  const SizedBox(height: 24),
+                  
+                  const SizedBox(height: 24), // Spacing before logout button
+
+                  // Logout Button
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20.0),
                     child: OutlinedButton.icon(
                       icon: SvgPicture.asset(
-                        'assets/icons/profile/logout_icon.svg',
+                        'assets/icons/profile/logout_icon.svg', // Ensure this asset exists
                          width: 20, height: 20,
                          colorFilter: ColorFilter.mode(Colors.red.shade700, BlendMode.srcIn),
-                         placeholderBuilder: (BuildContext context) => Icon(Icons.exit_to_app, color: Colors.red.shade300),
+                         placeholderBuilder: (BuildContext context) => Icon(Icons.exit_to_app, color: Colors.red.shade300), // Fallback icon
                       ),
                       label: Text(
                         'Log out',
@@ -279,7 +300,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       onPressed: _logoutUser,
                       style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 50),
+                        minimumSize: const Size(double.infinity, 50), // Make button full width
                         side: BorderSide(color: Colors.red.shade300, width: 1.5),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12.0),
@@ -287,7 +308,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 30), // Bottom padding
                 ],
               ),
           ),

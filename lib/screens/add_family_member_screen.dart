@@ -15,7 +15,7 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   User? _currentUser;
 
-  final TextEditingController _patientIdController = TextEditingController(); // Changed from _emailController
+  final TextEditingController _patientIdController = TextEditingController();
   bool _isSearching = false;
   bool _isLoadingRequest = false;
   Map<String, dynamic>? _searchedUser;
@@ -27,8 +27,9 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
     _currentUser = _auth.currentUser;
   }
 
-  Future<void> _searchUserByPatientId() async { // Renamed function
+  Future<void> _searchUserByPatientId() async {
     if (_patientIdController.text.trim().isEmpty) {
+      if (!mounted) return;
       setState(() {
         _searchError = "Please enter a Patient ID.";
         _searchedUser = null;
@@ -36,9 +37,14 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
       return;
     }
     
-    // It's good practice to prevent searching for one's own patient ID if applicable,
-    // but a user might not know their own patient ID easily.
-    // We'll rely on not being able to send a request to oneself later.
+    if (_currentUser == null) {
+      if (!mounted) return;
+       setState(() {
+        _searchError = "User not logged in. Please restart the app.";
+        _isSearching = false;
+      });
+      return;
+    }
 
     setState(() {
       _isSearching = true;
@@ -49,7 +55,7 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
     try {
       QuerySnapshot userQuery = await _firestore
           .collection('users')
-          .where('patientId', isEqualTo: _patientIdController.text.trim()) // Search by patientId
+          .where('patientId', isEqualTo: _patientIdController.text.trim().toUpperCase()) // Search by patientId, consider making it case-insensitive if needed or store patientId consistently
           .limit(1)
           .get();
 
@@ -58,6 +64,7 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
         final foundUserData = foundUserDoc.data() as Map<String, dynamic>?;
 
         if (foundUserDoc.id == _currentUser!.uid) {
+          if (!mounted) return;
           setState(() {
             _searchError = "You cannot add yourself as a family member.";
             _searchedUser = null;
@@ -66,11 +73,13 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
           return;
         }
 
+        // Check if already a family member
         DocumentSnapshot currentUserDocSnapshot = await _firestore.collection('users').doc(_currentUser!.uid).get();
         final currentUserData = currentUserDocSnapshot.data() as Map<String, dynamic>?;
         List<dynamic> familyMemberIds = currentUserData?['familyMemberIds'] ?? [];
 
         if (familyMemberIds.contains(foundUserDoc.id)) {
+          if (!mounted) return;
           setState(() {
             _searchError = "${foundUserData?['displayName'] ?? 'This user'} is already a family member.";
             _searchedUser = null;
@@ -79,14 +88,18 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
           return;
         }
 
+        // Check for existing pending requests (either direction)
         QuerySnapshot existingRequestQuery = await _firestore.collection('family_requests')
             .where('status', isEqualTo: 'pending')
-            .where(Filter.or(
+            .where(
+              Filter.or(
                 Filter.and(Filter('requesterId', isEqualTo: _currentUser!.uid), Filter('receiverId', isEqualTo: foundUserDoc.id)),
                 Filter.and(Filter('requesterId', isEqualTo: foundUserDoc.id), Filter('receiverId', isEqualTo: _currentUser!.uid))
-            )).limit(1).get();
+              )
+            ).limit(1).get();
 
         if(existingRequestQuery.docs.isNotEmpty){
+           if (!mounted) return;
            setState(() {
             _searchError = "A family request is already pending with this user.";
             _searchedUser = null;
@@ -94,15 +107,16 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
           });
           return;
         }
-
+        
+        if (!mounted) return;
         if (foundUserData != null) {
           setState(() {
             _searchedUser = {
               'uid': foundUserDoc.id,
               'displayName': foundUserData['displayName'],
-              'email': foundUserData['email'], // Keep email for display/request if needed
+              'email': foundUserData['email'], 
               'photoURL': foundUserData['photoURL'],
-              'patientId': foundUserData['patientId'], // Include patientId
+              'patientId': foundUserData['patientId'],
             };
             _isSearching = false;
           });
@@ -114,6 +128,7 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
           });
         }
       } else {
+        if (!mounted) return;
         setState(() {
           _searchError = "No user found with this Patient ID.";
           _searchedUser = null;
@@ -122,6 +137,7 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
       }
     } catch (e) {
       debugPrint("Error searching user by Patient ID: $e");
+      if (!mounted) return;
       if (e is FirebaseException && e.code == 'permission-denied') {
         _searchError = "Permission denied. Please check Firestore rules.";
       } else {
@@ -137,17 +153,22 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
   Future<void> _sendFamilyRequest() async {
     if (_currentUser == null || _searchedUser == null) return;
 
+    if (!mounted) return;
     setState(() => _isLoadingRequest = true);
 
     try {
+      // Double-check for existing pending request before sending
       QuerySnapshot existingRequestQuery = await _firestore.collection('family_requests')
             .where('status', isEqualTo: 'pending')
-            .where(Filter.or(
+            .where(
+              Filter.or(
                 Filter.and(Filter('requesterId', isEqualTo: _currentUser!.uid), Filter('receiverId', isEqualTo: _searchedUser!['uid'])),
                 Filter.and(Filter('requesterId', isEqualTo: _searchedUser!['uid']), Filter('receiverId', isEqualTo: _currentUser!.uid))
-            )).limit(1).get();
+              )
+            ).limit(1).get();
 
       if(existingRequestQuery.docs.isNotEmpty){
+           if (!mounted) return;
            ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('A request with this user is already pending.'), backgroundColor: Colors.orange),
           );
@@ -158,17 +179,18 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
       DocumentReference requestRef = _firestore.collection('family_requests').doc();
       Map<String, dynamic> requestData = {
         'requesterId': _currentUser!.uid,
-        'requesterName': _currentUser!.displayName ?? _currentUser!.email,
+        'requesterName': _currentUser!.displayName ?? _currentUser!.email, // Fallback to email if display name is null
         'requesterPhotoUrl': _currentUser!.photoURL,
         'receiverId': _searchedUser!['uid'],
-        'receiverEmail': _searchedUser!['email'], // Still useful to store for context
-        'receiverPatientId': _searchedUser!['patientId'], // Store patientId of receiver
+        'receiverEmail': _searchedUser!['email'], 
+        'receiverPatientId': _searchedUser!['patientId'], 
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       };
       await requestRef.set(requestData);
-
+      
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Family request sent to ${_searchedUser!['displayName'] ?? _searchedUser!['patientId']}.')),
       );
@@ -180,6 +202,7 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
 
     } catch (e) {
       debugPrint("Error sending family request: $e");
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to send request: ${e.toString()}')),
       );
@@ -203,23 +226,24 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Enter the Patient ID of the user you want to add as a family member.', // Updated instruction
+              'Enter the Patient ID of the user you want to add as a family member.',
               style: TextStyle(fontSize: 15, color: Colors.grey[700]),
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: _patientIdController, // Changed controller
-              keyboardType: TextInputType.text, // Patient ID can be alphanumeric
+              controller: _patientIdController,
+              keyboardType: TextInputType.text,
+              textCapitalization: TextCapitalization.characters, // For Patient ID
               decoration: InputDecoration(
-                labelText: 'Patient ID', // Changed label
-                hintText: 'E.g., MEDP001', // Changed hint
+                labelText: 'Patient ID',
+                hintText: 'E.g., PATIENT123',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                prefixIcon: const Icon(Icons.badge_outlined), // Changed icon
+                prefixIcon: const Icon(Icons.badge_outlined),
                 suffixIcon: _isSearching 
                     ? const Padding(padding: EdgeInsets.all(12.0), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 3)))
-                    : IconButton(icon: const Icon(Icons.search), onPressed: _searchUserByPatientId), // Call new search function
+                    : IconButton(icon: const Icon(Icons.search), onPressed: _searchUserByPatientId),
               ),
-              onSubmitted: (_) => _searchUserByPatientId(), // Call new search function
+              onSubmitted: (_) => _searchUserByPatientId(),
             ),
             if (_searchError != null)
               Padding(
@@ -233,13 +257,15 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundImage: _searchedUser!['photoURL'] != null
+                    backgroundImage: _searchedUser!['photoURL'] != null && _searchedUser!['photoURL'].isNotEmpty
                         ? NetworkImage(_searchedUser!['photoURL'])
                         : null,
-                    child: _searchedUser!['photoURL'] == null ? const Icon(Icons.person) : null,
+                    child: _searchedUser!['photoURL'] == null || _searchedUser!['photoURL'].isEmpty 
+                        ? const Icon(Icons.person) 
+                        : null,
                   ),
                   title: Text(_searchedUser!['displayName'] ?? 'N/A'),
-                  subtitle: Text("Patient ID: ${_searchedUser!['patientId'] ?? 'N/A'}"), // Display Patient ID
+                  subtitle: Text("Patient ID: ${_searchedUser!['patientId'] ?? 'N/A'}"),
                   trailing: ElevatedButton(
                     onPressed: _isLoadingRequest ? null : _sendFamilyRequest,
                     style: ElevatedButton.styleFrom(
@@ -260,7 +286,7 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
 
   @override
   void dispose() {
-    _patientIdController.dispose(); // Changed controller
+    _patientIdController.dispose();
     super.dispose();
   }
 }
