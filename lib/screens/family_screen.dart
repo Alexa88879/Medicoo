@@ -1,11 +1,13 @@
 // lib/screens/family_screen.dart
+import 'dart:async'; // Required for StreamTransformer
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import 'add_family_member_screen.dart';
 import '../models/family_request_model.dart';
-// You might create a simple User model for displaying family members or use a Map
-// For now, we'll fetch basic info directly.
+import '../models/allergy_model.dart'; // Import the Allergy model
 
 class FamilyScreen extends StatefulWidget {
   const FamilyScreen({super.key});
@@ -25,13 +27,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
     _currentUser = _auth.currentUser;
   }
 
-  // Stream to get accepted family members
   Stream<List<Map<String, dynamic>>> _getFamilyMembersStream() {
     if (_currentUser == null) return Stream.value([]);
-    // This assumes you have a 'familyMembers' array in your user document
-    // containing UIDs of accepted family members.
-    // Or, a more complex query if you use a separate 'families' collection.
-    // For now, let's assume 'familyMembers' array in 'users' doc.
+    
     return _firestore.collection('users').doc(_currentUser!.uid).snapshots().asyncMap((userDoc) async {
       if (!userDoc.exists || userDoc.data()?['familyMemberIds'] == null) {
         return [];
@@ -44,21 +42,61 @@ class _FamilyScreenState extends State<FamilyScreen> {
         try {
           DocumentSnapshot memberDoc = await _firestore.collection('users').doc(memberId).get();
           if (memberDoc.exists) {
+            final data = memberDoc.data() as Map<String, dynamic>;
             membersData.add({
               'uid': memberDoc.id,
-              'displayName': (memberDoc.data() as Map<String, dynamic>)?['displayName'] ?? 'N/A',
-              'photoURL': (memberDoc.data() as Map<String, dynamic>)?['photoURL'],
+              'displayName': data['displayName'] ?? 'N/A',
+              'photoURL': data['photoURL'],
+              'patientId': data['patientId'] ?? 'N/A',
             });
           }
         } catch (e) {
           debugPrint("Error fetching family member $memberId: $e");
+          // Optionally, rethrow or handle more gracefully
         }
       }
       return membersData;
     });
   }
 
-  // Stream for incoming family requests
+  // Stream to get allergies for a specific family member
+  Stream<List<Allergy>> _getFamilyMemberAllergiesStream(String memberId) {
+    // IMPORTANT: This stream will fail with permission errors if Firebase rules are not updated.
+    return _firestore
+        .collection('user_allergies')
+        .where('userId', isEqualTo: memberId)
+        .orderBy('createdAt', descending: true)
+        .snapshots() // Stream<QuerySnapshot<Map<String, dynamic>>>
+        .map<List<Allergy>>((snapshot) { // Explicitly type the map's output
+          // This map function transforms QuerySnapshot to List<Allergy>
+          if (snapshot.docs.isEmpty) {
+            return <Allergy>[]; // Return an empty list of the correct type
+          }
+          try {
+            return snapshot.docs
+                .map<Allergy>((doc) => Allergy.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>)) // Explicitly type this map
+                .toList();
+          } catch(e) {
+            // This catch is for errors during the parsing of individual documents
+            debugPrint("Error parsing individual allergy doc for $memberId within map: $e");
+            // If one document fails to parse, you might decide to return an empty list for the whole snapshot,
+            // or filter out the problematic document. For simplicity, returning empty here.
+            return <Allergy>[]; 
+          }
+        }) // Output of this map: Stream<List<Allergy>>
+        .transform(StreamTransformer<List<Allergy>, List<Allergy>>.fromHandlers(
+          handleError: (Object error, StackTrace stackTrace, EventSink<List<Allergy>> sink) {
+            // This handles errors from the stream itself (e.g., Firestore permission errors)
+            // or errors rethrown from the .map() operation.
+            debugPrint("Error in _getFamilyMemberAllergiesStream for $memberId (transformed): $error");
+            // debugPrintStack(stackTrace: stackTrace); // Uncomment for full stack trace
+            sink.add(<Allergy>[]); // Emit an empty list of the correct type on error
+            // sink.close(); // Do not close the sink if the original stream is a snapshot stream that might emit further events or recover.
+                           // For Firestore snapshots, an error like permission denied is often persistent for that query.
+          },
+        ));
+  }
+
   Stream<List<FamilyRequest>> _getIncomingRequestsStream() {
     if (_currentUser == null) return Stream.value([]);
     return _firestore
@@ -72,7 +110,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
             .toList());
   }
 
-  // Stream for outgoing family requests
   Stream<List<FamilyRequest>> _getOutgoingRequestsStream() {
     if (_currentUser == null) return Stream.value([]);
     return _firestore
@@ -93,6 +130,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
       DocumentSnapshot requestDoc = await requestRef.get();
 
       if (!requestDoc.exists) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request not found.')));
         return;
       }
@@ -100,14 +138,12 @@ class _FamilyScreenState extends State<FamilyScreen> {
       FamilyRequest request = FamilyRequest.fromFirestore(requestDoc as DocumentSnapshot<Map<String, dynamic>>);
 
       await _firestore.runTransaction((transaction) async {
-        // Update the request status
         transaction.update(requestRef, {
           'status': newStatus,
           'updatedAt': FieldValue.serverTimestamp(),
         });
 
         if (newStatus == 'accepted') {
-          // Add to each other's familyMemberIds list
           DocumentReference currentUserRef = _firestore.collection('users').doc(_currentUser!.uid);
           DocumentReference requesterUserRef = _firestore.collection('users').doc(request.requesterId);
 
@@ -119,12 +155,13 @@ class _FamilyScreenState extends State<FamilyScreen> {
           });
         }
       });
-
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Request ${newStatus == "accepted" ? "accepted" : "declined"}.')),
       );
     } catch (e) {
       debugPrint("Error updating request: $e");
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to update request: ${e.toString()}')),
       );
@@ -132,16 +169,40 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
   
   Future<void> _cancelOutgoingRequest(String requestId) async {
-    // Optional: Add confirmation dialog
-    try {
-      await _firestore.collection('family_requests').doc(requestId).delete();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Request cancelled.')),
-      );
-    } catch (e) {
-       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to cancel request: ${e.toString()}')),
-      );
+    if (!mounted) return;
+    final bool? confirmCancel = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Cancel Request'),
+          content: const Text('Are you sure you want to cancel this family request?'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('No'),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+            ),
+            TextButton(
+              child: const Text('Yes, Cancel', style: TextStyle(color: Colors.orange)),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmCancel == true) {
+      try {
+        await _firestore.collection('family_requests').doc(requestId).delete();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Request cancelled.')),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to cancel request: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -181,18 +242,19 @@ class _FamilyScreenState extends State<FamilyScreen> {
             'familyMemberIds': FieldValue.arrayRemove([_currentUser!.uid])
           });
         });
+         if (!mounted) return;
          ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Family member removed.')),
         );
       } catch (e) {
         debugPrint("Error removing family member: $e");
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to remove family member: ${e.toString()}')),
         );
       }
     }
   }
-
 
   Widget _buildSectionTitle(String title) {
     return Padding(
@@ -205,58 +267,117 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Widget _buildFamilyMemberListTile(Map<String, dynamic> memberData) {
+    final String memberUid = memberData['uid'];
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
+      elevation: 1.5,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: ExpansionTile(
         leading: CircleAvatar(
-          backgroundImage: memberData['photoURL'] != null ? NetworkImage(memberData['photoURL']) : null,
-          child: memberData['photoURL'] == null ? const Icon(Icons.person) : null,
+          backgroundImage: memberData['photoURL'] != null && memberData['photoURL'].isNotEmpty 
+              ? NetworkImage(memberData['photoURL']) 
+              : null,
+          child: memberData['photoURL'] == null || memberData['photoURL'].isEmpty 
+              ? const Icon(Icons.person_outline) 
+              : null,
         ),
-        title: Text(memberData['displayName'] ?? 'N/A'),
-        trailing: IconButton(
+        title: Text(memberData['displayName'] ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.w500)),
+        subtitle: Text("Patient ID: ${memberData['patientId'] ?? 'N/A'}"),
+        trailing: IconButton( 
           icon: Icon(Icons.remove_circle_outline, color: Colors.red.shade400),
-          onPressed: () => _removeFamilyMember(memberData['uid']),
+          tooltip: "Remove Member",
+          onPressed: () => _removeFamilyMember(memberUid),
         ),
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: StreamBuilder<List<Allergy>>(
+              stream: _getFamilyMemberAllergiesStream(memberUid),
+              builder: (context, allergySnapshot) {
+                if (allergySnapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: Padding(padding: EdgeInsets.all(8.0), child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2,))));
+                }
+                if (allergySnapshot.hasError) {
+                  return Text('Could not load allergies. (Check Permissions)', style: TextStyle(color: Colors.orange.shade800));
+                }
+                if (!allergySnapshot.hasData || allergySnapshot.data!.isEmpty) {
+                  return const Text('No allergies recorded for this member.', style: TextStyle(color: Colors.grey));
+                }
+                final allergies = allergySnapshot.data!;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Allergies:", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    if (allergies.isEmpty)
+                      const Text("None listed.", style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)),
+                    ...allergies.map((allergy) => Padding(
+                      padding: const EdgeInsets.only(top: 2.0),
+                      child: Text(
+                        "- ${allergy.allergyName} (Severity: ${allergy.severity}, Reaction: ${allergy.reactionType})",
+                        style: TextStyle(color: Colors.grey[700]),
+                      ),
+                    )).toList(),
+                  ],
+                );
+              },
+            ),
+          )
+        ],
       ),
     );
   }
   
   Widget _buildRequestListTile(FamilyRequest request, bool isIncoming) {
+    String titleText = isIncoming 
+        ? request.requesterName 
+        : "To: ${request.receiverPatientId ?? request.receiverEmail}";
+    String subtitleText = isIncoming 
+        ? "${request.requesterName} wants to add you as family." 
+        : "Status: ${request.status.toUpperCase()} (Sent: ${DateFormat('dd MMM yy').format(request.createdAt.toDate())})";
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      elevation: 1.5,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundImage: request.requesterPhotoUrl != null ? NetworkImage(request.requesterPhotoUrl!) : null,
-          child: request.requesterPhotoUrl == null ? const Icon(Icons.person_outline) : null,
+          backgroundImage: request.requesterPhotoUrl != null && request.requesterPhotoUrl!.isNotEmpty 
+              ? NetworkImage(request.requesterPhotoUrl!) 
+              : null,
+          child: request.requesterPhotoUrl == null || request.requesterPhotoUrl!.isEmpty 
+              ? const Icon(Icons.person_outline) 
+              : null,
         ),
-        title: Text(isIncoming ? request.requesterName : "To: ${request.receiverEmail}"),
-        subtitle: Text(isIncoming ? "${request.requesterName} wants to add you as family." : "Status: ${request.status}"),
+        title: Text(titleText, style: const TextStyle(fontWeight: FontWeight.w500)),
+        subtitle: Text(subtitleText),
         trailing: isIncoming
             ? Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    icon: Icon(Icons.check_circle_outline, color: Colors.green.shade600),
+                    icon: Icon(Icons.check_circle_outline, color: Colors.green.shade600, size: 28),
+                    tooltip: "Accept",
                     onPressed: () => _updateRequestStatus(request.id, 'accepted'),
                   ),
                   IconButton(
-                    icon: Icon(Icons.cancel_outlined, color: Colors.red.shade400),
+                    icon: Icon(Icons.cancel_outlined, color: Colors.red.shade400, size: 28),
+                    tooltip: "Decline",
                     onPressed: () => _updateRequestStatus(request.id, 'declined'),
                   ),
                 ],
               )
             : (request.status == 'pending' 
                 ? IconButton(
-                    icon: Icon(Icons.cancel_schedule_send_outlined, color: Colors.orange.shade700),
+                    icon: Icon(Icons.cancel_schedule_send_outlined, color: Colors.orange.shade700, size: 28),
                     tooltip: "Cancel Request",
                     onPressed: () => _cancelOutgoingRequest(request.id),
                   )
-                : null
+                : null 
               ),
       ),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -269,60 +390,75 @@ class _FamilyScreenState extends State<FamilyScreen> {
       ),
       body: _currentUser == null
           ? const Center(child: Text("Please log in to view family members."))
-          : ListView(
-              children: [
-                _buildSectionTitle('My Family Members'),
-                StreamBuilder<List<Map<String, dynamic>>>(
-                  stream: _getFamilyMembersStream(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator()));
-                    }
-                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-                        child: Text('No family members added yet.', style: TextStyle(color: Colors.grey)),
-                      );
-                    }
-                    return Column(children: snapshot.data!.map(_buildFamilyMemberListTile).toList());
-                  },
-                ),
+          : RefreshIndicator(
+              onRefresh: () async {
+                if(mounted) setState(() {});
+              },
+              color: Theme.of(context).primaryColor,
+              child: ListView(
+                children: [
+                  _buildSectionTitle('My Family Members'),
+                  StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: _getFamilyMembersStream(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
+                      }
+                      if (snapshot.hasError) {
+                        return Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text("Error: ${snapshot.error}")));
+                      }
+                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                          child: Center(child: Text('No family members added yet.', style: TextStyle(color: Colors.grey))),
+                        );
+                      }
+                      return Column(children: snapshot.data!.map(_buildFamilyMemberListTile).toList());
+                    },
+                  ),
 
-                _buildSectionTitle('Incoming Requests'),
-                StreamBuilder<List<FamilyRequest>>(
-                  stream: _getIncomingRequestsStream(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator()));
-                    }
-                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-                        child: Text('No incoming requests.', style: TextStyle(color: Colors.grey)),
-                      );
-                    }
-                    return Column(children: snapshot.data!.map((req) => _buildRequestListTile(req, true)).toList());
-                  },
-                ),
+                  _buildSectionTitle('Incoming Requests'),
+                  StreamBuilder<List<FamilyRequest>>(
+                    stream: _getIncomingRequestsStream(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
+                      }
+                       if (snapshot.hasError) {
+                        return Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text("Error: ${snapshot.error}")));
+                      }
+                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                          child: Center(child: Text('No incoming requests.', style: TextStyle(color: Colors.grey))),
+                        );
+                      }
+                      return Column(children: snapshot.data!.map((req) => _buildRequestListTile(req, true)).toList());
+                    },
+                  ),
 
-                _buildSectionTitle('Outgoing Requests'),
-                 StreamBuilder<List<FamilyRequest>>(
-                  stream: _getOutgoingRequestsStream(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator()));
-                    }
-                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-                        child: Text('No pending outgoing requests.', style: TextStyle(color: Colors.grey)),
-                      );
-                    }
-                    return Column(children: snapshot.data!.map((req) => _buildRequestListTile(req, false)).toList());
-                  },
-                ),
-                const SizedBox(height: 80), // Space for FAB
-              ],
+                  _buildSectionTitle('Outgoing Requests'),
+                   StreamBuilder<List<FamilyRequest>>(
+                    stream: _getOutgoingRequestsStream(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
+                      }
+                       if (snapshot.hasError) {
+                        return Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text("Error: ${snapshot.error}")));
+                      }
+                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                          child: Center(child: Text('No pending outgoing requests.', style: TextStyle(color: Colors.grey))),
+                        );
+                      }
+                      return Column(children: snapshot.data!.map((req) => _buildRequestListTile(req, false)).toList());
+                    },
+                  ),
+                  const SizedBox(height: 80), 
+                ],
+              ),
             ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {

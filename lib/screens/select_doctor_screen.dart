@@ -1,9 +1,8 @@
-//lib\screens\select_doctor_screen.dart
+// lib/screens/select_doctor_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'doctor_appointment_detail_screen.dart';
 import '../models/doctor_model.dart';
- // Import the new screen
 
 class SelectDoctorScreen extends StatefulWidget {
   final String specialization;
@@ -33,10 +32,11 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
     try {
       Query<Map<String, dynamic>> query = _firestore
           .collection('doctors')
-          .where('speciality', isEqualTo: specialization)
-          .where('isAvailable', isEqualTo: true);
+          .where('speciality', isEqualTo: specialization) // Ensure field name matches Firestore
+          .where('isAvailable', isEqualTo: true); // Ensure field name matches Firestore
 
-      // Filter for video consultation capable doctors
+      // Filter for video consultation capable doctors if bookingType is "video"
+      // Make sure 'offersVideoConsultation' field exists in your Firestore 'doctors' documents.
       if (bookingType == "video") {
         query = query.where('offersVideoConsultation', isEqualTo: true);
       }
@@ -69,7 +69,7 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(appBarTitle, style: const TextStyle(color: Colors.white)),
-        backgroundColor: const Color(0xFF6EB6B4),
+        backgroundColor: const Color(0xFF6EB6B4), // Teal color
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
       ),
@@ -86,7 +86,7 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
                 child: Text(
                   'Could not load doctors. Please try again later.\nError: ${snapshot.error}',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red),
+                  style: const TextStyle(color: Colors.red, fontSize: 16),
                 ),
               )
             );
@@ -101,7 +101,7 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
                 child: Text(
                   message,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 16),
+                  style: const TextStyle(fontSize: 16, color: Colors.grey),
                 ),
               ),
             );
@@ -109,31 +109,22 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
 
           List<Doctor> doctors = snapshot.data!;
           return ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
             itemCount: doctors.length,
             itemBuilder: (context, index) {
               final doctor = doctors[index];
               String qualificationsText = (doctor.qualifications != null && doctor.qualifications!.isNotEmpty)
                                           ? doctor.qualifications!.join(', ')
-                                          : 'Not specified';
+                                          : 'Qualifications not specified';
+              String experienceText = doctor.yearsOfExperience != null
+                                          ? '${doctor.yearsOfExperience} years experience'
+                                          : 'Experience not specified';
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                elevation: 2.0,
+                elevation: 3.0,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    radius: 30,
-                    backgroundColor: Colors.grey.shade200,
-                    backgroundImage: doctor.imageUrl != null && doctor.imageUrl!.isNotEmpty
-                        ? NetworkImage(doctor.imageUrl!)
-                        : null,
-                    child: doctor.imageUrl == null || doctor.imageUrl!.isEmpty
-                        ? Icon(Icons.person, size: 30, color: Theme.of(context).primaryColor)
-                        : null,
-                  ),
-                  title: Text(doctor.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('${doctor.specialization}\n$qualificationsText'),
-                  isThreeLine: qualificationsText != 'Not specified' && qualificationsText.isNotEmpty,
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                child: InkWell( // Added InkWell for better tap feedback
+                  borderRadius: BorderRadius.circular(12.0),
                   onTap: () {
                     Navigator.push(
                       context,
@@ -142,6 +133,39 @@ class _SelectDoctorScreenState extends State<SelectDoctorScreen> {
                       ),
                     );
                   },
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 35,
+                          backgroundColor: Colors.grey.shade200,
+                          backgroundImage: doctor.imageUrl != null && doctor.imageUrl!.isNotEmpty
+                              ? NetworkImage(doctor.imageUrl!)
+                              : null,
+                          child: doctor.imageUrl == null || doctor.imageUrl!.isEmpty
+                              ? Icon(Icons.person_outline, size: 35, color: Theme.of(context).primaryColor)
+                              : null,
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(doctor.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: Color(0xFF004D40))),
+                              const SizedBox(height: 4),
+                              Text(doctor.specialization, style: TextStyle(fontSize: 14, color: Colors.grey[700])),
+                              const SizedBox(height: 2),
+                              Text(qualificationsText, style: TextStyle(fontSize: 13, color: Colors.grey[600]), overflow: TextOverflow.ellipsis, maxLines: 1),
+                               const SizedBox(height: 2),
+                              Text(experienceText, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.arrow_forward_ios, size: 18, color: Colors.grey[400]),
+                      ],
+                    ),
+                  ),
                 ),
               );
             },

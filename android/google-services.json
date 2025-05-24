@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "439734875341",
+    "project_id": "curelink-cb43f",
+    "storage_bucket": "curelink-cb43f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:439734875341:android:d69b97a83f62f832c32584",
+        "android_client_info": {
+          "package_name": "com.example.tryfigma"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "439734875341-uq9mbbfbe051pkt692bprls2o35el9o1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.tryfigma",
+            "certificate_hash": "3773f27fac56e2e2c315185b0d422d8b7f8d2a47"
+          }
+        },
+        {
+          "client_id": "439734875341-hmmdqmstls1t0d3a2p1oqm6c438vveqo.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBcGaLDqxK7sN-PRgvJTWbmALBOHqnwBNA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "439734875341-hmmdqmstls1t0d3a2p1oqm6c438vveqo.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

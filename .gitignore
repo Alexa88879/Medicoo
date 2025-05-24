@@ -45,8 +45,9 @@ app.*.map.json
 /android/app/release
 
 # Ignore secrets file
-lib/services/voice_assistant_service.dart
+
 lib/secrets.dart
+/android/app/src/main/res/values/secrets.xml
 .env
 
 
