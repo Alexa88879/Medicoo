@@ -5,12 +5,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart'; // For debugPrint
-import 'dart:convert'; // For jsonEncode, jsonDecode
-import 'package:http/http.dart' as http; // Import http package
-import '../models/prescription_model.dart'; 
-import '../secrets.dart'; // Import the secrets file for API key
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../models/prescription_model.dart';
+import '../secrets.dart';
 
-// Data class for structured diet advice
+// Data class for structured diet advice (assuming it's defined here or imported)
 class StructuredDietAdvice {
   final List<String> beneficialNutrients;
   final List<String> foodsToEat;
@@ -25,18 +25,15 @@ class StructuredDietAdvice {
   });
 
   factory StructuredDietAdvice.fromJson(Map<String, dynamic> json) {
-    // Helper to clean list items
     List<String> cleanList(List<dynamic>? rawList) {
       if (rawList == null) return [];
       return rawList.map((item) {
         String strItem = item.toString();
-        // Remove leading asterisks, hyphens, or numbered list markers followed by a space
         strItem = strItem.replaceFirst(RegExp(r'^[\*\-\–\•]\s*'), '');
         strItem = strItem.replaceFirst(RegExp(r'^\d+\.\s*'), '');
         return strItem.trim();
       }).toList();
     }
-
     return StructuredDietAdvice(
       beneficialNutrients: cleanList(json['beneficialNutrients']),
       foodsToEat: cleanList(json['foodsToEat']),
@@ -62,17 +59,15 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
 
   bool _isLoading = true;
   String? _error;
-  bool _isRecordCompleted = false; 
+  bool _isRecordCompleted = false;
 
   DocumentSnapshot? _appointmentData;
-  List<Prescription> _prescriptions = []; 
+  List<Prescription> _prescriptions = [];
   List<DocumentSnapshot> _labReports = [];
 
-  // State for Gemini Diet Advice
-  final Map<String, StructuredDietAdvice?> _dietAdviceMap = {}; 
-  final Map<String, bool> _isFetchingDietAdviceMap = {}; 
-  final Map<String, String?> _dietAdviceErrorMap = {}; 
-
+  final Map<String, StructuredDietAdvice?> _dietAdviceMap = {};
+  final Map<String, bool> _isFetchingDietAdviceMap = {};
+  final Map<String, String?> _dietAdviceErrorMap = {};
 
   @override
   void initState() {
@@ -85,8 +80,8 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
     setState(() {
       _isLoading = true;
       _error = null;
-      _isRecordCompleted = false; 
-      _dietAdviceMap.clear(); 
+      _isRecordCompleted = false;
+      _dietAdviceMap.clear();
       _isFetchingDietAdviceMap.clear();
       _dietAdviceErrorMap.clear();
     });
@@ -121,13 +116,13 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
 
       Map<String, dynamic>? appointmentDetails = _appointmentData!.data() as Map<String, dynamic>?;
       if (appointmentDetails == null || appointmentDetails['userId'] != currentUser.uid) {
-         debugPrint("[RecordDetailScreen] Permission check: Appointment userId ${appointmentDetails?['userId']} vs Current user ${currentUser.uid}");
-         setState(() {
+        debugPrint("[RecordDetailScreen] Permission check: Appointment userId ${appointmentDetails?['userId']} vs Current user ${currentUser.uid}");
+        setState(() {
           _isLoading = false;
           _error = "You do not have permission to view this appointment's details.";
-          _appointmentData = null; 
+          _appointmentData = null;
         });
-         return; 
+        return;
       }
 
       if (appointmentDetails['status'] == 'completed') {
@@ -138,7 +133,7 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
           });
         }
       } else {
-         if (mounted) {
+        if (mounted) {
           setState(() {
             _isRecordCompleted = false;
             debugPrint("[RecordDetailScreen] Record status is '${appointmentDetails['status']}'. _isRecordCompleted set to false.");
@@ -154,7 +149,7 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
             .where('patientId', isEqualTo: currentUser.uid)
             .orderBy('issuedDate', descending: true)
             .get();
-            
+
         if (prescriptionSnapshot.docs.isNotEmpty) {
           _prescriptions = prescriptionSnapshot.docs
               .map((doc) => Prescription.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>))
@@ -211,16 +206,14 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
 
     setState(() {
       _isFetchingDietAdviceMap[prescriptionId] = true;
-      _dietAdviceMap[prescriptionId] = null; 
+      _dietAdviceMap[prescriptionId] = null;
       _dietAdviceErrorMap[prescriptionId] = null;
     });
 
     String diagnosis = prescription.diagnosis ?? "No specific diagnosis provided.";
     String currentAdvice = prescription.advice ?? "No specific advice provided by doctor.";
     
-    // Updated prompt for conciseness and to avoid markdown in JSON values
     String prompt = "You are an AI medical assistant. Based on the diagnosis: '$diagnosis' and current medical advice: '$currentAdvice', provide diet advice for a patient as a doctor would. Structure your response as JSON with the following keys: 'beneficialNutrients' (array of short strings, max 5 items), 'foodsToEat' (array of short strings, max 5 items), 'foodsToAvoid' (array of short strings, max 5 items), and 'generalTips' (array of very short, actionable general dietary tips, max 3 items). Ensure each string item is a direct statement suitable for a bullet point and does not contain any markdown characters like asterisks or hyphens. Keep the overall advice concise and easy to understand. Do not provide medical disclaimers in the JSON output.";
-
 
     debugPrint("[RecordDetailScreen] Gemini Prompt for prescription $prescriptionId: $prompt");
 
@@ -233,26 +226,10 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
               "responseSchema": {
                   "type": "OBJECT",
                   "properties": {
-                    "beneficialNutrients": {
-                      "type": "ARRAY",
-                      "description": "List of specific nutrients beneficial (max 5 items, short strings).",
-                      "items": { "type": "STRING" }
-                    },
-                    "foodsToEat": {
-                      "type": "ARRAY",
-                      "description": "List of specific foods to eat (max 5 items, short strings).",
-                      "items": { "type": "STRING" }
-                    },
-                    "foodsToAvoid": {
-                      "type": "ARRAY",
-                      "description": "List of specific foods to avoid (max 5 items, short strings).",
-                      "items": { "type": "STRING" }
-                    },
-                    "generalTips": {
-                        "type": "ARRAY",
-                        "description": "Short, actionable general dietary tips (max 3 items, very short strings).",
-                        "items": { "type": "STRING"}
-                    }
+                    "beneficialNutrients": { "type": "ARRAY", "description": "List of specific nutrients beneficial (max 5 items, short strings).", "items": { "type": "STRING" }},
+                    "foodsToEat": { "type": "ARRAY", "description": "List of specific foods to eat (max 5 items, short strings).", "items": { "type": "STRING" }},
+                    "foodsToAvoid": { "type": "ARRAY", "description": "List of specific foods to avoid (max 5 items, short strings).", "items": { "type": "STRING" }},
+                    "generalTips": { "type": "ARRAY", "description": "Short, actionable general dietary tips (max 3 items, very short strings).", "items": { "type": "STRING"}}
                   },
                   "required": ["beneficialNutrients", "foodsToEat", "foodsToAvoid", "generalTips"]
               }
@@ -270,15 +247,9 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
         debugPrint("[RecordDetailScreen] Gemini API Response: $result");
-        if (result['candidates'] != null &&
-            result['candidates'].isNotEmpty &&
-            result['candidates'][0]['content'] != null &&
-            result['candidates'][0]['content']['parts'] != null &&
-            result['candidates'][0]['content']['parts'].isNotEmpty) {
-          
+        if (result['candidates'] != null && result['candidates'].isNotEmpty && result['candidates'][0]['content'] != null && result['candidates'][0]['content']['parts'] != null && result['candidates'][0]['content']['parts'].isNotEmpty) {
           final String jsonText = result['candidates'][0]['content']['parts'][0]['text'];
-          final Map<String, dynamic> jsonData = jsonDecode(jsonText); 
-          
+          final Map<String, dynamic> jsonData = jsonDecode(jsonText);
           if (mounted) {
             setState(() {
               _dietAdviceMap[prescriptionId] = StructuredDietAdvice.fromJson(jsonData);
@@ -307,7 +278,6 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
     }
   }
 
-
   Widget _buildSectionTitle(String title, {IconData? icon, double topPadding = 24.0, double bottomPadding = 10.0}) {
     return Padding(
       padding: EdgeInsets.only(top: topPadding, bottom: bottomPadding),
@@ -330,7 +300,7 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
   Future<void> _launchURL(String urlString) async {
     final Uri url = Uri.parse(urlString);
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-      if(mounted) { 
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not launch $urlString')),
         );
@@ -357,24 +327,24 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080))))
-          : _error != null 
+          : _error != null
               ? Center(child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 16), textAlign: TextAlign.center),
                 ))
-              : appointmentDetails == null 
+              : appointmentDetails == null
                   ? const Center(child: Text('Appointment data not available.'))
-                  : RefreshIndicator( 
+                  : RefreshIndicator(
                       onRefresh: _loadRecordDetails,
                       color: Theme.of(context).primaryColor,
                       child: ListView(
                         padding: const EdgeInsets.all(16.0),
                         children: [
-                          if (!_isRecordCompleted && !_isLoading) 
+                          if (!_isRecordCompleted && !_isLoading)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 16.0),
                               child: Card(
-                                color: Colors.orange[50], 
+                                color: Colors.orange[50],
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                 child: Padding(
                                   padding: const EdgeInsets.all(12.0),
@@ -388,11 +358,42 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
                             ),
                           _buildAppointmentInfoCard(appointmentDetails, appointmentDateFormatted, isRecordCompleted: _isRecordCompleted),
                           
+                          if (appointmentDetails['medicalReportUrl'] != null &&
+                              appointmentDetails['medicalReportUrl'].isNotEmpty) ...[
+                            _buildSectionTitle('Uploaded Medical Report', icon: Icons.description_outlined),
+                            Card(
+                              elevation: 1.5,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              margin: const EdgeInsets.only(bottom: 10),
+                              child: ListTile(
+                                leading: const Icon(Icons.picture_as_pdf_outlined, color: Colors.redAccent, size: 30),
+                                title: Text(
+                                  appointmentDetails['medicalReportFileName'] ?? 'View Medical Report',
+                                  style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
+                                ),
+                                subtitle: Text('Tap to view/download', style: TextStyle(color: Colors.grey[600])),
+                                trailing: Icon(Icons.open_in_new_rounded, color: Theme.of(context).primaryColor, size: 24),
+                                onTap: () => _launchURL(appointmentDetails['medicalReportUrl']),
+                              ),
+                            ),
+                          ],
+                          
+                          // --- Video Consultation Link Section REMOVED ---
+                          // The following block has been removed:
+                          // if (_isRecordCompleted && wasVideoAppointment && videoLink != null && videoLink.isNotEmpty && videoLinkShared) ...[
+                          //   _buildSectionTitle('Video Consultation Link', icon: Icons.videocam_outlined),
+                          //   Card( /* ... */ ),
+                          // ] else if (_isRecordCompleted && wasVideoAppointment) ...[
+                          //    _buildSectionTitle('Video Consultation Link', icon: Icons.videocam_off_outlined),
+                          //    Padding( /* ... */ ),
+                          // ],
+                          // --- End of REMOVED Video Consultation Link Section ---
+
                           if (_isRecordCompleted) ...[
                             _buildLabReportsSection(),
-                            _buildPrescriptionsSection(), 
+                            _buildPrescriptionsSection(),
                           ],
-                          const SizedBox(height: 20), 
+                          const SizedBox(height: 20),
                         ],
                       ),
                     ),
@@ -400,7 +401,7 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
   }
 
   Widget _buildAppointmentInfoCard(Map<String, dynamic> appointmentDetails, String appointmentDateFormatted, {required bool isRecordCompleted}) {
-     return Card(
+    return Card(
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -421,7 +422,7 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
             if (isRecordCompleted) ...[
               if (appointmentDetails['diagnosis'] != null && appointmentDetails['diagnosis'].isNotEmpty)
                  _buildInfoRow(Icons.health_and_safety_outlined, "Diagnosis", appointmentDetails['diagnosis']),
-              if (appointmentDetails['notes'] != null && appointmentDetails['notes'].isNotEmpty) 
+              if (appointmentDetails['notes'] != null && appointmentDetails['notes'].isNotEmpty)
                  _buildInfoRow(Icons.notes_outlined, "Advice/Notes (Appointment)", appointmentDetails['notes']),
             ],
             _buildInfoRow(Icons.info_outline, "Status", appointmentDetails['status']?.toString().capitalizeFirstLetter() ?? 'N/A'),
@@ -432,8 +433,8 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
   }
 
   Widget _buildLabReportsSection() {
-    if (_isLoading && _labReports.isEmpty) return const SizedBox.shrink(); 
-    if (_labReports.isEmpty && !_isLoading) { 
+    if (_isLoading && _labReports.isEmpty) return const SizedBox.shrink();
+    if (_labReports.isEmpty && !_isLoading) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -460,7 +461,7 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
               leading: Icon(Icons.assignment_outlined, color: Theme.of(context).primaryColor, size: 28),
               title: Text(reportData['reportName'] ?? 'Unnamed Report', style: const TextStyle(fontWeight: FontWeight.w500)),
               subtitle: Text('Date: $reportDateFormatted\n${reportData['summaryOrKeyFindings'] ?? ''}'),
-              isThreeLine: (reportData['summaryOrKeyFindings'] ?? '').isNotEmpty, 
+              isThreeLine: (reportData['summaryOrKeyFindings'] ?? '').isNotEmpty,
               trailing: (reportData['fileUrl'] != null && reportData['fileUrl'].isNotEmpty)
                 ? IconButton(
                     icon: Icon(Icons.download_for_offline_outlined, color: Colors.teal[700], size: 26),
@@ -476,8 +477,8 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
   }
 
   Widget _buildPrescriptionsSection() {
-    if (_isLoading && _prescriptions.isEmpty) return const SizedBox.shrink(); 
-    if (_prescriptions.isEmpty && !_isLoading) { 
+    if (_isLoading && _prescriptions.isEmpty) return const SizedBox.shrink();
+    if (_prescriptions.isEmpty && !_isLoading) {
        return Column(
          crossAxisAlignment: CrossAxisAlignment.start,
          children: [
@@ -490,7 +491,7 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildSectionTitle('Prescribed Medicines', icon: Icons.medication_outlined),
-        ..._prescriptions.map((prescription) { 
+        ..._prescriptions.map((prescription) {
           final prescriptionId = prescription.id;
           final bool isFetchingAdvice = _isFetchingDietAdviceMap[prescriptionId] ?? false;
           final StructuredDietAdvice? structuredDietAdvice = _dietAdviceMap[prescriptionId];
@@ -502,7 +503,7 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             margin: const EdgeInsets.only(bottom: 10),
             child: Padding(
-              padding: const EdgeInsets.all(16.0), 
+              padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -521,7 +522,7 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
                     const SizedBox(height: 6),
                     _buildDetailItem(icon: Icons.lightbulb_outline, label: "Prescription Advice", value: prescription.advice!),
                   ],
-                  const Divider(height: 24, thickness: 0.8), 
+                  const Divider(height: 24, thickness: 0.8),
                   Text("Medications:", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.grey[800])),
                   const SizedBox(height: 8),
                   if (prescription.medications.isEmpty)
@@ -531,17 +532,17 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
                     )
                   else
                     ListView.builder(
-                      shrinkWrap: true, 
-                      physics: const NeverScrollableScrollPhysics(), 
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
                       itemCount: prescription.medications.length,
                       itemBuilder: (context, index) {
-                        final med = prescription.medications[index]; 
+                        final med = prescription.medications[index];
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10.0),
-                          child: Container( 
+                          child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: Colors.teal.withOpacity(0.05), 
+                              color: Colors.teal.withOpacity(0.05),
                               borderRadius: BorderRadius.circular(8)
                             ),
                             child: Column(
@@ -559,25 +560,24 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
                       },
                     ),
                   const SizedBox(height: 16),
-                  // Gemini Diet Advice Section
-                  if ((prescription.diagnosis != null && prescription.diagnosis!.isNotEmpty) || 
+                  if ((prescription.diagnosis != null && prescription.diagnosis!.isNotEmpty) ||
                       (prescription.advice != null && prescription.advice!.isNotEmpty)) ...[
                       ElevatedButton.icon(
-                        icon: const Icon(Icons.restaurant_menu_outlined, size: 18), // Changed icon
+                        icon: const Icon(Icons.restaurant_menu_outlined, size: 18),
                         label: Text(structuredDietAdvice == null && !isFetchingAdvice ? 'Get Diet Advice' : 'Refresh Diet Advice'),
                         onPressed: isFetchingAdvice ? null : () => _getDietAdviceFromGemini(prescription),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Theme.of(context).primaryColor.withOpacity(0.8), // Slightly different color
+                          backgroundColor: Theme.of(context).primaryColor.withOpacity(0.8),
                           foregroundColor: Colors.white,
                           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
-                      const SizedBox(height: 12), // Increased spacing
+                      const SizedBox(height: 12),
                       if (isFetchingAdvice)
                         const Center(child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16.0), // Increased padding
+                          padding: EdgeInsets.symmetric(vertical: 16.0),
                           child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080))),
                         ))
                       else if (dietAdviceError != null)
@@ -585,8 +585,8 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
                            padding: const EdgeInsets.symmetric(vertical: 8.0),
                            child: Text(dietAdviceError, style: TextStyle(color: Colors.red.shade700, fontSize: 14)),
                          )
-                      else if (structuredDietAdvice != null) 
-                        _buildStructuredDietAdviceUI(structuredDietAdvice), // UI for structured advice
+                      else if (structuredDietAdvice != null)
+                        _buildStructuredDietAdviceUI(structuredDietAdvice),
                   ],
                 ],
               ),
@@ -599,10 +599,10 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
 
   Widget _buildStructuredDietAdviceUI(StructuredDietAdvice advice) {
     return Container(
-      margin: const EdgeInsets.only(top: 12, bottom: 8), // Added bottom margin
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), // Adjusted padding
+      margin: const EdgeInsets.only(top: 12, bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.secondary.withOpacity(0.05), // Use theme color
+        color: Theme.of(context).colorScheme.secondary.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Theme.of(context).colorScheme.secondary.withOpacity(0.3))
       ),
@@ -614,27 +614,26 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
             child: Text(
               "AI Diet Suggestions",
               style: TextStyle(
-                fontSize: 17, // Slightly larger title
+                fontSize: 17,
                 fontWeight: FontWeight.w600,
                 color: Theme.of(context).primaryColorDark,
               ),
             ),
           ),
           if (advice.beneficialNutrients.isNotEmpty)
-            _buildDietAdviceCategory("Beneficial Nutrients", advice.beneficialNutrients, Icons.spa_outlined, Colors.green[600]!), // Changed icon
+            _buildDietAdviceCategory("Beneficial Nutrients", advice.beneficialNutrients, Icons.spa_outlined, Colors.green[600]!),
           if (advice.foodsToEat.isNotEmpty)
-            _buildDietAdviceCategory("Foods to Include", advice.foodsToEat, Icons.check_circle_outline, Colors.blue[600]!), // Changed icon and title
+            _buildDietAdviceCategory("Foods to Include", advice.foodsToEat, Icons.check_circle_outline, Colors.blue[600]!),
           if (advice.foodsToAvoid.isNotEmpty)
-            _buildDietAdviceCategory("Foods to Limit/Avoid", advice.foodsToAvoid, Icons.remove_circle_outline, Colors.red[600]!), // Changed icon and title
+            _buildDietAdviceCategory("Foods to Limit/Avoid", advice.foodsToAvoid, Icons.remove_circle_outline, Colors.red[600]!),
            if (advice.generalTips.isNotEmpty)
-            _buildDietAdviceCategory("General Dietary Tips", advice.generalTips, Icons.info_outline_rounded, Colors.orange[700]!), // Changed icon and title
+            _buildDietAdviceCategory("General Dietary Tips", advice.generalTips, Icons.info_outline_rounded, Colors.orange[700]!),
         ],
       ),
     );
   }
 
   Widget _buildDietAdviceCategory(String title, List<String> items, IconData icon, Color iconColor) {
-    // This method now assumes items are already cleaned (no leading asterisks)
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: Column(
@@ -643,28 +642,28 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
           Row(
             children: [
               Icon(icon, color: iconColor, size: 20),
-              const SizedBox(width: 10), // Increased spacing
+              const SizedBox(width: 10),
               Text(
                 title,
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.grey[800]), // Slightly smaller category title
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.grey[800]),
               ),
             ],
           ),
-          const SizedBox(height: 8), // Increased spacing
+          const SizedBox(height: 8),
           Padding(
-            padding: const EdgeInsets.only(left: 12.0), // Indent items slightly less
+            padding: const EdgeInsets.only(left: 12.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: items.map((item) => Padding(
-                padding: const EdgeInsets.only(bottom: 5.0), // Adjusted spacing
+                padding: const EdgeInsets.only(bottom: 5.0),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.only(right: 8.0, top: 2.0), // Adjust bullet position
-                      child: Icon(Icons.fiber_manual_record, size: 8, color: Colors.grey[600]), // Actual bullet icon
+                      padding: const EdgeInsets.only(right: 8.0, top: 2.0),
+                      child: Icon(Icons.fiber_manual_record, size: 8, color: Colors.grey[600]),
                     ),
-                    Expanded(child: Text(item, style: TextStyle(fontSize: 14, color: Colors.grey[700], height: 1.4))), // Increased line height
+                    Expanded(child: Text(item, style: TextStyle(fontSize: 14, color: Colors.grey[700], height: 1.4))),
                   ],
                 ),
               )).toList(),
@@ -674,7 +673,6 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
       ),
     );
   }
-
 
   Widget _buildDetailItem({required IconData icon, required String label, required String value}) {
     return Padding(
@@ -692,7 +690,7 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
   }
 
   Widget _buildInfoRow(IconData icon, String label, String? value) {
-    if (value == null || value.isEmpty) return const SizedBox.shrink(); 
+    if (value == null || value.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(

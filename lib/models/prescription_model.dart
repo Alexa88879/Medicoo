@@ -16,30 +16,29 @@ class Medication {
   });
 
   factory Medication.fromMap(Map<String, dynamic> map) {
-    // Added debug print for medication parsing
     debugPrint("[Medication.fromMap] Parsing map: $map");
     return Medication(
-      medicineName: map['medicineName'] ?? 'N/A',
-      dosage: map['dosage'] ?? 'N/A',
-      frequency: map['frequency'] ?? 'N/A',
-      duration: map['duration'] ?? 'N/A',
+      medicineName: map['medicineName']?.toString() ?? 'N/A', // Ensure string
+      dosage: map['dosage']?.toString() ?? 'N/A',             // Ensure string
+      frequency: map['frequency']?.toString() ?? 'N/A',         // Ensure string
+      duration: map['duration']?.toString() ?? 'N/A',          // Convert to string if not null
     );
   }
 }
 
 class Prescription {
   final String id;
-  final String patientId; // To match your Firestore data
+  final String patientId;
   final String doctorId;
   final String doctorName;
   final String? patientName;
   final String appointmentId;
-  final Timestamp issueDate; // To match 'issuedDate' from your Firestore sample
+  final Timestamp issueDate;
   final List<Medication> medications;
-  final String? notes; // General notes for the prescription itself
+  final String? notes;
   final String? diagnosis;
   final String? status;
-  final String? advice; // <<<--- ADDED ADVICE FIELD
+  final String? advice;
 
   Prescription({
     required this.id,
@@ -53,7 +52,7 @@ class Prescription {
     this.notes,
     this.diagnosis,
     this.status,
-    this.advice, // <<<--- ADDED TO CONSTRUCTOR
+    this.advice,
   });
 
   factory Prescription.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -77,17 +76,17 @@ class Prescription {
 
     return Prescription(
       id: doc.id,
-      patientId: data['patientId'] ?? '', // Using patientId from your sample
+      patientId: data['patientId'] ?? '',
       doctorId: data['doctorId'] ?? '',
       doctorName: data['doctorName'] ?? 'N/A',
-      patientName: data['patientName'], // This was in your sample
+      patientName: data['patientName'],
       appointmentId: data['appointmentId'] ?? '',
-      issueDate: data['issuedDate'] ?? Timestamp.now(), // Using issuedDate from your sample
+      issueDate: data['issuedDate'] ?? Timestamp.now(),
       medications: medsList,
-      notes: data['notes'], // General notes for the prescription
-      diagnosis: data['diagnosis'], // Diagnosis specific to the prescription
-      status: data['status'], 
-      advice: data['advice'], // <<<--- PARSE ADVICE FIELD FROM PRESCRIPTION DATA
+      notes: data['notes'],
+      diagnosis: data['diagnosis'],
+      status: data['status'],
+      advice: data['advice'],
     );
   }
 }
