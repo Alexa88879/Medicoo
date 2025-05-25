@@ -4,7 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 // Model for the summary displayed in the RecordsListScreen
 class MedicalRecordSummary {
   final String id; // Typically appointmentId
-  final String diseaseOrCategory;
+  final String doctorName; // Added
+  final String doctorSpecialty; // Added
   final String year;
   final String period; // Could be the formatted date of the appointment
   final String? patientAgeAtEvent; // User's age at the time of the event
@@ -12,7 +13,8 @@ class MedicalRecordSummary {
 
   MedicalRecordSummary({
     required this.id,
-    required this.diseaseOrCategory,
+    required this.doctorName, // Added
+    required this.doctorSpecialty, // Added
     required this.year,
     required this.period,
     this.patientAgeAtEvent,

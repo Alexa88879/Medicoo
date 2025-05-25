@@ -22,8 +22,8 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
 
   Stream<List<MedicalRecordSummary>>? _recordsStream;
   Map<String, dynamic>? _userData;
-  bool _isUserDataLoading = true; 
-  bool _isSettingUpStream = true; 
+  bool _isUserDataLoading = true;
+  bool _isSettingUpStream = true;
 
   @override
   void initState() {
@@ -37,7 +37,7 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
     if (!mounted) return;
     setState(() {
       _isUserDataLoading = true;
-      _isSettingUpStream = true; 
+      _isSettingUpStream = true;
     });
 
     User? currentUser = _auth.currentUser;
@@ -64,10 +64,10 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
 
     if (mounted) {
       setState(() {
-        _isUserDataLoading = false; 
+        _isUserDataLoading = false;
       });
     }
-    _setupRecordsStream(); 
+    _setupRecordsStream();
   }
 
   void _setupRecordsStream() {
@@ -78,23 +78,23 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
       if (mounted) {
         setState(() {
           _recordsStream = Stream.value([]);
-          _isSettingUpStream = false; 
+          _isSettingUpStream = false;
         });
         debugPrint("[RecordsListScreen] No user, setting empty stream and _isSettingUpStream = false.");
       }
       return;
     }
-    
+
     if(mounted) {
       setState(() {
         _isSettingUpStream = true;
-        _recordsStream = null; 
+        _recordsStream = null;
       });
     }
 
     Query query = _firestore
         .collection('appointments')
-        .where('userId', isEqualTo: currentUser.uid) 
+        .where('userId', isEqualTo: currentUser.uid)
         .where('status', isEqualTo: 'completed') // <<<--- ENSURES ONLY COMPLETED RECORDS ARE FETCHED
         .orderBy('dateTimeFull', descending: true);
 
@@ -114,24 +114,25 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
 
     Stream<List<MedicalRecordSummary>> newStream = query.snapshots().map((snapshot) {
       debugPrint("[RecordsListScreen] Stream received snapshot with ${snapshot.docs.length} COMPLETED documents for filter '$_selectedFilter'.");
-      
+
       List<MedicalRecordSummary> summaries = snapshot.docs.map((doc) {
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        Timestamp eventTimestamp = data['dateTimeFull'] ?? Timestamp.now(); 
+        Timestamp eventTimestamp = data['dateTimeFull'] ?? Timestamp.now();
         DateTime eventDate = eventTimestamp.toDate();
-        
+
         String patientAgeAtEventStr = "N/A";
         if (_userData != null && _userData!['age'] != null) {
            patientAgeAtEventStr = _userData!['age'].toString();
         }
-        
+
         return MedicalRecordSummary(
-          id: doc.id, 
-          diseaseOrCategory: data['category'] ?? data['doctorSpeciality'] ?? 'N/A',
+          id: doc.id,
+          doctorName: data['doctorName'] ?? 'N/A', // Fetch doctorName
+          doctorSpecialty: data['doctorSpeciality'] ?? 'N/A', // Fetch doctorSpeciality
           year: DateFormat('yyyy').format(eventDate),
-          period: DateFormat('dd MMM, yyyy').format(eventDate), // Consistent format
+          period: DateFormat('dd MMM, yyyy').format(eventDate), // Consistent format including year
           patientAgeAtEvent: patientAgeAtEventStr,
-          eventTimestamp: eventTimestamp, 
+          eventTimestamp: eventTimestamp,
         );
       }).toList();
 
@@ -142,7 +143,7 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
       }
       if (mounted) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && _isSettingUpStream) { 
+            if (mounted && _isSettingUpStream) {
                setState(() => _isSettingUpStream = false);
             }
           });
@@ -152,12 +153,12 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
         debugPrint("[RecordsListScreen] Error in records stream: $error");
         if (mounted) {
              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted && _isSettingUpStream) { 
+                if (mounted && _isSettingUpStream) {
                     setState(() => _isSettingUpStream = false);
                 }
              });
         }
-        throw error; 
+        throw error;
     });
 
     if (mounted) {
@@ -166,7 +167,7 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
       });
     }
   }
-  
+
   void _onFilterChanged(String? newFilter) {
     if (newFilter != null && newFilter != _selectedFilter) {
       debugPrint("[RecordsListScreen] Filter changed to: $newFilter");
@@ -175,7 +176,7 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
           _selectedFilter = newFilter;
         });
       }
-      _setupRecordsStream(); 
+      _setupRecordsStream();
     }
   }
 
@@ -187,7 +188,7 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
         title: const Text('My Records', style: TextStyle(color: Color(0xFF00695C))),
         backgroundColor: Colors.white,
         elevation: 1.0,
-        automaticallyImplyLeading: false, 
+        automaticallyImplyLeading: false,
       ),
       body: Column(
         children: [
@@ -221,7 +222,7 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
             child: RefreshIndicator(
               onRefresh: _fetchUserDataAndSetupStream,
               color: Theme.of(context).primaryColor,
-              child: Builder( 
+              child: Builder(
                 builder: (context) {
                   if (_isUserDataLoading) {
                     debugPrint("[RecordsListScreen] Build: Showing User Data Loading Indicator.");
@@ -233,10 +234,10 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
                   }
                   if (_recordsStream == null && !_isSettingUpStream) {
                       debugPrint("[RecordsListScreen] Build: Records stream is null and not setting up. Showing 'No records to display'.");
-                       return LayoutBuilder( 
-                        builder: (BuildContext context, BoxConstraints viewportConstraints) { 
+                       return LayoutBuilder(
+                        builder: (BuildContext context, BoxConstraints viewportConstraints) {
                           return SingleChildScrollView(
-                            physics: const AlwaysScrollableScrollPhysics(), 
+                            physics: const AlwaysScrollableScrollPhysics(),
                             child: ConstrainedBox(
                               constraints: BoxConstraints(minHeight: viewportConstraints.maxHeight),
                               child: const Center(
@@ -259,7 +260,7 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
                     stream: _recordsStream,
                     builder: (context, snapshot) {
                       debugPrint("[RecordsListScreen] StreamBuilder rebuild. ConnectionState: ${snapshot.connectionState}, HasError: ${snapshot.hasError}, HasData: ${snapshot.hasData}");
-                      
+
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         debugPrint("[RecordsListScreen] StreamBuilder: Waiting for stream data.");
                         return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080))));
@@ -270,10 +271,10 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
                       }
                       if (!snapshot.hasData || snapshot.data!.isEmpty) {
                         debugPrint("[RecordsListScreen] StreamBuilder: No data or empty data (completed records).");
-                        return LayoutBuilder( 
-                          builder: (BuildContext context, BoxConstraints viewportConstraints) { 
+                        return LayoutBuilder(
+                          builder: (BuildContext context, BoxConstraints viewportConstraints) {
                             return SingleChildScrollView(
-                              physics: const AlwaysScrollableScrollPhysics(), 
+                              physics: const AlwaysScrollableScrollPhysics(),
                               child: ConstrainedBox(
                                 constraints: BoxConstraints(minHeight: viewportConstraints.maxHeight),
                                 child: const Center(
@@ -300,7 +301,7 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
                         itemBuilder: (context, index) {
                           final record = records[index];
                           return Card(
-                            key: ValueKey(record.id), 
+                            key: ValueKey(record.id),
                             margin: const EdgeInsets.only(bottom: 12.0),
                             elevation: 2.0,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
@@ -310,12 +311,13 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    record.diseaseOrCategory,
+                                    // Display doctor name and specialty
+                                    "${record.doctorName} (${record.doctorSpecialty})",
                                     style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF00695C)),
                                   ),
                                   const SizedBox(height: 8),
                                   _buildRecordInfoRow('Date:', record.period),
-                                  _buildRecordInfoRow('Year:', record.year),
+                                  // _buildRecordInfoRow('Year:', record.year), // Year is part of period now
                                   _buildRecordInfoRow('Patient Age (approx.):', record.patientAgeAtEvent ?? 'N/A'),
                                   const SizedBox(height: 10),
                                   Align(
