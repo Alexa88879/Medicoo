@@ -18,11 +18,12 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   String _selectedFilter = 'Lifetime'; // Default filter
-  final List<String> _filterOptions = ['Lifetime', 'Last 6 Months', 'Last Year', 'Custom Range']; // Example filters
+  final List<String> _filterOptions = ['Lifetime', 'Last 6 Months', 'Last Year'];
 
   Stream<List<MedicalRecordSummary>>? _recordsStream;
   Map<String, dynamic>? _userData;
-
+  bool _isUserDataLoading = true; 
+  bool _isSettingUpStream = true; 
 
   @override
   void initState() {
@@ -32,42 +33,70 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
   }
 
   Future<void> _fetchUserDataAndSetupStream() async {
+    debugPrint("[RecordsListScreen] _fetchUserDataAndSetupStream called (Refresh or Initial).");
+    if (!mounted) return;
+    setState(() {
+      _isUserDataLoading = true;
+      _isSettingUpStream = true; 
+    });
+
     User? currentUser = _auth.currentUser;
     if (currentUser != null) {
       try {
-      } catch (e) {
-        debugPrint('Error fetching user data: $e');
         DocumentSnapshot userDoc = await _firestore.collection('users').doc(currentUser.uid).get();
         if (mounted && userDoc.exists) {
           _userData = userDoc.data() as Map<String, dynamic>;
-        };
+          debugPrint("[RecordsListScreen] User data fetched: ${_userData?['displayName']}");
+        } else {
+          debugPrint("[RecordsListScreen] User document does not exist for UID: ${currentUser.uid}");
+        }
+      } catch (e) {
+        debugPrint("[RecordsListScreen] Error fetching user data: $e");
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not load user details: ${e.toString()}')),
+          );
+        }
       }
+    } else {
+      debugPrint("[RecordsListScreen] No current user found.");
     }
-    _setupRecordsStream(); // Setup stream after fetching user data (or even if it fails)
-  }
 
+    if (mounted) {
+      setState(() {
+        _isUserDataLoading = false; 
+      });
+    }
+    _setupRecordsStream(); 
+  }
 
   void _setupRecordsStream() {
     User? currentUser = _auth.currentUser;
     debugPrint("[RecordsListScreen] _setupRecordsStream called. Filter: $_selectedFilter, User: ${currentUser?.uid}");
 
     if (currentUser == null) {
-      setState(() => _recordsStream = Stream.value([])); // Empty stream if no user
+      if (mounted) {
+        setState(() {
+          _recordsStream = Stream.value([]);
+          _isSettingUpStream = false; 
+        });
+        debugPrint("[RecordsListScreen] No user, setting empty stream and _isSettingUpStream = false.");
+      }
       return;
     }
     
     if(mounted) {
       setState(() {
-// Remove this line since _isSettingUpStream is not defined
+        _isSettingUpStream = true;
         _recordsStream = null; 
       });
     }
 
     Query query = _firestore
         .collection('appointments')
-        .where('userId', isEqualTo: currentUser.uid)
-        // .where('status', whereIn: ['completed', 'cancelled']) // Consider only completed/cancelled appointments as "records"
-        .orderBy('dateTimeFull', descending: true); // Most recent first
+        .where('userId', isEqualTo: currentUser.uid) 
+        .where('status', isEqualTo: 'completed') // <<<--- ENSURES ONLY COMPLETED RECORDS ARE FETCHED
+        .orderBy('dateTimeFull', descending: true);
 
     DateTime now = DateTime.now();
     switch (_selectedFilter) {
@@ -79,64 +108,86 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
         break;
       case 'Lifetime':
       default:
-        // No additional date filter for lifetime
         break;
     }
-    // TODO: Implement 'Custom Range' filter with date pickers
+    debugPrint("[RecordsListScreen] Query configured for filter: $_selectedFilter including status 'completed'.");
 
-    setState(() {
-      _recordsStream = query.snapshots().map((snapshot) {
-        return snapshot.docs.map((doc) {
-          Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-          Timestamp eventTimestamp = data['dateTimeFull'] ?? Timestamp.now();
-          DateTime eventDate = eventTimestamp.toDate();
-          
-          String patientAgeAtEventStr = "N/A";
-          if (_userData != null && _userData!['age'] != null) { // Using current age for simplicity
-             patientAgeAtEventStr = _userData!['age'].toString();
-          }
-          // For more accuracy, if you store user's DOB:
-          // if (_userData != null && _userData!['birthDate'] is Timestamp) {
-          //   DateTime birthDate = (_userData!['birthDate'] as Timestamp).toDate();
-          //   int age = eventDate.year - birthDate.year;
-          //   if (eventDate.month < birthDate.month || (eventDate.month == birthDate.month && eventDate.day < birthDate.day)) {
-          //     age--;
-          //   }
-          //  patientAgeAtEventStr = age.toString();
-          // }
+    Stream<List<MedicalRecordSummary>> newStream = query.snapshots().map((snapshot) {
+      debugPrint("[RecordsListScreen] Stream received snapshot with ${snapshot.docs.length} COMPLETED documents for filter '$_selectedFilter'.");
+      
+      List<MedicalRecordSummary> summaries = snapshot.docs.map((doc) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        Timestamp eventTimestamp = data['dateTimeFull'] ?? Timestamp.now(); 
+        DateTime eventDate = eventTimestamp.toDate();
+        
+        String patientAgeAtEventStr = "N/A";
+        if (_userData != null && _userData!['age'] != null) {
+           patientAgeAtEventStr = _userData!['age'].toString();
+        }
+        
+        return MedicalRecordSummary(
+          id: doc.id, 
+          diseaseOrCategory: data['category'] ?? data['doctorSpeciality'] ?? 'N/A',
+          year: DateFormat('yyyy').format(eventDate),
+          period: DateFormat('dd MMM, yyyy').format(eventDate), // Consistent format
+          patientAgeAtEvent: patientAgeAtEventStr,
+          eventTimestamp: eventTimestamp, 
+        );
+      }).toList();
 
-
-          return MedicalRecordSummary(
-            id: doc.id,
-            diseaseOrCategory: data['category'] ?? data['doctorSpeciality'] ?? 'N/A',
-            year: DateFormat('yyyy').format(eventDate),
-            period: DateFormat('dd MMM, yyyy').format(eventDate),
-            patientAgeAtEvent: patientAgeAtEventStr,
-            eventTimestamp: eventTimestamp,
-          );
-        }).toList();
-      });
+      if (summaries.isNotEmpty) {
+          debugPrint("[RecordsListScreen] Mapped to ${summaries.length} summaries. First record ID: ${summaries.first.id}, Timestamp: ${summaries.first.eventTimestamp.toDate()}");
+      } else {
+          debugPrint("[RecordsListScreen] Mapped to 0 summaries.");
+      }
+      if (mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _isSettingUpStream) { 
+               setState(() => _isSettingUpStream = false);
+            }
+          });
+      }
+      return summaries;
+    }).handleError((error) {
+        debugPrint("[RecordsListScreen] Error in records stream: $error");
+        if (mounted) {
+             WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _isSettingUpStream) { 
+                    setState(() => _isSettingUpStream = false);
+                }
+             });
+        }
+        throw error; 
     });
+
+    if (mounted) {
+      setState(() {
+        _recordsStream = newStream;
+      });
+    }
   }
   
   void _onFilterChanged(String? newFilter) {
     if (newFilter != null && newFilter != _selectedFilter) {
-      setState(() {
-        _selectedFilter = newFilter;
-      });
-      _setupRecordsStream(); // Re-fetch/re-filter data
+      debugPrint("[RecordsListScreen] Filter changed to: $newFilter");
+      if (mounted) {
+        setState(() {
+          _selectedFilter = newFilter;
+        });
+      }
+      _setupRecordsStream(); 
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    debugPrint("[RecordsListScreen] Build method called.");
+    debugPrint("[RecordsListScreen] Build method called. _isUserDataLoading: $_isUserDataLoading, _isSettingUpStream: $_isSettingUpStream");
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Records', style: TextStyle(color: Color(0xFF00695C))),
         backgroundColor: Colors.white,
         elevation: 1.0,
-        automaticallyImplyLeading: false, // No back button as it's a tab
+        automaticallyImplyLeading: false, 
       ),
       body: Column(
         children: [
@@ -167,68 +218,137 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
             ),
           ),
           Expanded(
-            child: StreamBuilder<List<MedicalRecordSummary>>(
-              stream: _recordsStream,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting && _userData == null) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text('No records found.'));
-                }
-
-                List<MedicalRecordSummary> records = snapshot.data!;
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  itemCount: records.length,
-                  itemBuilder: (context, index) {
-                    final record = records[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12.0),
-                      elevation: 2.0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              record.diseaseOrCategory,
-                              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF00695C)),
-                            ),
-                            const SizedBox(height: 8),
-                            _buildRecordInfoRow('Year:', record.year),
-                            _buildRecordInfoRow('Period:', record.period),
-                            _buildRecordInfoRow('Age:', record.patientAgeAtEvent ?? 'N/A'),
-                            const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: ElevatedButton(
-                                onPressed: () {
-                                  Navigator.of(context).push(MaterialPageRoute( // Use context from builder
-                                    builder: (context) => RecordDetailScreen(recordId: record.id),
-                                  ));
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Theme.of(context).primaryColor,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8)
-                                  )
-                                ),
-                                child: const Text('More'),
+            child: RefreshIndicator(
+              onRefresh: _fetchUserDataAndSetupStream,
+              color: Theme.of(context).primaryColor,
+              child: Builder( 
+                builder: (context) {
+                  if (_isUserDataLoading) {
+                    debugPrint("[RecordsListScreen] Build: Showing User Data Loading Indicator.");
+                    return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080))));
+                  }
+                  if (_isSettingUpStream && _recordsStream == null) {
+                     debugPrint("[RecordsListScreen] Build: Showing Stream Setup Loading Indicator (_isSettingUpStream true, _recordsStream null).");
+                     return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080))));
+                  }
+                  if (_recordsStream == null && !_isSettingUpStream) {
+                      debugPrint("[RecordsListScreen] Build: Records stream is null and not setting up. Showing 'No records to display'.");
+                       return LayoutBuilder( 
+                        builder: (BuildContext context, BoxConstraints viewportConstraints) { 
+                          return SingleChildScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(), 
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(minHeight: viewportConstraints.maxHeight),
+                              child: const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(16.0),
+                                  child: Text(
+                                    'No completed records to display. Pull down to refresh.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(fontSize: 16, color: Colors.grey)
+                                  ),
+                                )
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
+                          );
+                        }
+                      );
+                  }
+
+                  return StreamBuilder<List<MedicalRecordSummary>>(
+                    stream: _recordsStream,
+                    builder: (context, snapshot) {
+                      debugPrint("[RecordsListScreen] StreamBuilder rebuild. ConnectionState: ${snapshot.connectionState}, HasError: ${snapshot.hasError}, HasData: ${snapshot.hasData}");
+                      
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        debugPrint("[RecordsListScreen] StreamBuilder: Waiting for stream data.");
+                        return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080))));
+                      }
+                      if (snapshot.hasError) {
+                        debugPrint("[RecordsListScreen] StreamBuilder error: ${snapshot.error}");
+                        return Center(child: Text('Error loading records: ${snapshot.error}'));
+                      }
+                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        debugPrint("[RecordsListScreen] StreamBuilder: No data or empty data (completed records).");
+                        return LayoutBuilder( 
+                          builder: (BuildContext context, BoxConstraints viewportConstraints) { 
+                            return SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(), 
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(minHeight: viewportConstraints.maxHeight),
+                                child: const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(16.0),
+                                    child: Text(
+                                      'No completed records found for the selected filter.\nPull down to refresh.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontSize: 16, color: Colors.grey)
+                                    ),
+                                  )
+                                ),
+                              ),
+                            );
+                          }
+                        );
+                      }
+
+                      List<MedicalRecordSummary> records = snapshot.data!;
+                      debugPrint("[RecordsListScreen] StreamBuilder: Displaying ${records.length} completed records.");
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        itemCount: records.length,
+                        itemBuilder: (context, index) {
+                          final record = records[index];
+                          return Card(
+                            key: ValueKey(record.id), 
+                            margin: const EdgeInsets.only(bottom: 12.0),
+                            elevation: 2.0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    record.diseaseOrCategory,
+                                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF00695C)),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _buildRecordInfoRow('Date:', record.period),
+                                  _buildRecordInfoRow('Year:', record.year),
+                                  _buildRecordInfoRow('Patient Age (approx.):', record.patientAgeAtEvent ?? 'N/A'),
+                                  const SizedBox(height: 10),
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: ElevatedButton.icon(
+                                      icon: const Icon(Icons.arrow_forward, size: 16),
+                                      label: const Text('View Details'),
+                                      onPressed: () {
+                                        Navigator.of(context).push(MaterialPageRoute(
+                                          builder: (context) => RecordDetailScreen(recordId: record.id),
+                                        ));
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Theme.of(context).primaryColor,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8)
+                                        ),
+                                        textStyle: const TextStyle(fontSize: 14)
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
             ),
           ),
         ],

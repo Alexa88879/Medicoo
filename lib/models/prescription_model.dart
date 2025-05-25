@@ -36,9 +36,10 @@ class Prescription {
   final String appointmentId;
   final Timestamp issueDate; // To match 'issuedDate' from your Firestore sample
   final List<Medication> medications;
-  final String? notes;
+  final String? notes; // General notes for the prescription itself
   final String? diagnosis;
   final String? status;
+  final String? advice; // <<<--- ADDED ADVICE FIELD
 
   Prescription({
     required this.id,
@@ -52,6 +53,7 @@ class Prescription {
     this.notes,
     this.diagnosis,
     this.status,
+    this.advice, // <<<--- ADDED TO CONSTRUCTOR
   });
 
   factory Prescription.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -82,9 +84,10 @@ class Prescription {
       appointmentId: data['appointmentId'] ?? '',
       issueDate: data['issuedDate'] ?? Timestamp.now(), // Using issuedDate from your sample
       medications: medsList,
-      notes: data['notes'], // Assuming 'notes' might exist
-      diagnosis: data['diagnosis'], // From your sample
-      status: data['status'], // From your sample
+      notes: data['notes'], // General notes for the prescription
+      diagnosis: data['diagnosis'], // Diagnosis specific to the prescription
+      status: data['status'], 
+      advice: data['advice'], // <<<--- PARSE ADVICE FIELD FROM PRESCRIPTION DATA
     );
   }
 }
