@@ -23,6 +23,7 @@ class Doctor {
   final GeoPoint? location; // Firestore GeoPoint
   final List<String>? servicesOffered;
   final List<String>? languagesSpoken;
+  final bool? offersVideoConsultation; // Added for video consultation
 
   Doctor({
     required this.uid,
@@ -46,6 +47,7 @@ class Doctor {
     this.location,
     this.servicesOffered,
     this.languagesSpoken,
+    this.offersVideoConsultation,
   });
 
   factory Doctor.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -111,6 +113,7 @@ class Doctor {
       location: data['location'] as GeoPoint?,
       servicesOffered: servicesOfferedList,
       languagesSpoken: languagesSpokenList,
+      offersVideoConsultation: data['offersVideoConsultation'] ?? false,
     );
   }
 

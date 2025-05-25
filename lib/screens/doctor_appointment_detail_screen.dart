@@ -7,8 +7,13 @@ import '../models/doctor_model.dart'; // Ensure this path is correct
 
 class DoctorAppointmentDetailScreen extends StatefulWidget {
   final Doctor doctor;
+  final String? bookingType; // Add this parameter
 
-  const DoctorAppointmentDetailScreen({super.key, required this.doctor});
+  const DoctorAppointmentDetailScreen({
+    super.key, 
+    required this.doctor, 
+    this.bookingType = "in_person", // Default to in_person
+  });
 
   @override
   State<DoctorAppointmentDetailScreen> createState() =>
@@ -288,7 +293,7 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(), // Send null if empty
-        'appointmentType': 'in_person', // For this screen
+        'appointmentType': widget.bookingType ?? 'in_person', // Use the bookingType
         // Fields for video consultation, set to null or default for in-person
         'videoConsultationLink': null,
         'isVideoLinkShared': false,
@@ -336,7 +341,12 @@ class _DoctorAppointmentDetailScreenState extends State<DoctorAppointmentDetailS
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(doctor.name, style: const TextStyle(color: Colors.white)),
+        title: Text(
+          widget.bookingType == "video" 
+              ? "Video Consultation with ${doctor.name}" 
+              : doctor.name, 
+          style: const TextStyle(color: Colors.white)
+        ),
         backgroundColor: const Color(0xFF6EB6B4),
         iconTheme: const IconThemeData(color: Colors.white),
       ),

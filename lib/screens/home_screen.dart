@@ -655,8 +655,11 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Video Consultation',
             onTap: () {
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Video Consultation (Not Implemented)')),
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SelectCategoryScreen(bookingType: "video"),
+                  ),
                 );
               }
             },

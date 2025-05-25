@@ -114,6 +114,14 @@ class MyApp extends StatelessWidget {
         }
         // Add other routes as needed for different notification types
         // e.g., '/labReportDetail', etc.
+        ,'/videoConsultation': (context) {
+          final String? appointmentId = ModalRoute.of(context)?.settings.arguments as String?;
+          return const Scaffold(
+            body: Center(
+              child: Text('Video Consultation Screen - To be implemented'),
+            ),
+          );
+        },
       },
       // ---- END MODIFICATIONS ----
       home: StreamBuilder<User?>(

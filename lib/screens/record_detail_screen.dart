@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart'; // For debugPrint
 import '../models/prescription_model.dart'; // Import the common Prescription model
+import 'video_consultation_screen.dart';
 
 class RecordDetailScreen extends StatefulWidget {
   final String recordId; // This is the appointmentId
@@ -203,7 +204,7 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
   }
 
   Widget _buildAppointmentInfoCard(Map<String, dynamic> appointmentDetails, String appointmentDateFormatted) {
-     return Card(
+    return Card(
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -225,6 +226,34 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
             if (appointmentDetails['notes'] != null && appointmentDetails['notes'].isNotEmpty)
                _buildInfoRow(Icons.notes_outlined, "Consultation Notes", appointmentDetails['notes']),
             _buildInfoRow(Icons.info_outline, "Status", appointmentDetails['status']?.toString().capitalizeFirstLetter() ?? 'N/A'),
+            
+            // Add video consultation button if it's a video appointment
+            if (appointmentDetails['appointmentType'] == 'video') ...[  
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.video_call),
+                  label: const Text('Join Video Consultation'),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => VideoConsultationScreen(
+                          appointmentId: widget.recordId,
+                        ),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
