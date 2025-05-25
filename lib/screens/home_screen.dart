@@ -13,6 +13,7 @@ import 'profile_screen.dart';
 import 'records_list_screen.dart';
 import 'book_lab_test_screen.dart';
 import 'medical_voice_assistant.dart';
+import 'all_appointments_screen.dart';
 
 // Helper icon widgets (ensure these asset paths are correct in your project)
 Widget _buildCompositeProfileIcon({
@@ -279,6 +280,7 @@ class _HomeScreenState extends State<HomeScreen> {
           .collection('appointments')
           .where('userId', isEqualTo: _currentUser!.uid)
           .where('dateTimeFull', isGreaterThanOrEqualTo: Timestamp.now())
+          .where('status', whereIn: ['booked', 'confirmed', 'video_link_added']) // Change to include all relevant statuses
           .orderBy('dateTimeFull', descending: false)
           .limit(2)
           .get();
@@ -956,8 +958,12 @@ class _HomeScreenState extends State<HomeScreen> {
               child: TextButton(
                 onPressed: () {
                   if (mounted) {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(const SnackBar(content: Text('View All Appointments (Not Implemented)')));
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const AllAppointmentsScreen(),
+                      ),
+                    );
                   }
                 },
                 child: const Text('View All', style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold)),
