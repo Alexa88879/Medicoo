@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'appointment_detail_screen.dart';
 
 class AllAppointmentsScreen extends StatefulWidget {
   const AllAppointmentsScreen({super.key});
@@ -141,9 +142,14 @@ class _AllAppointmentsScreenState extends State<AllAppointmentsScreen> {
           ],
         ),
         onTap: () {
-          // Navigate to appointment details or show details in a dialog
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Appointment details for ${doc.id}')),
+          // Navigate to appointment details screen
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AppointmentDetailScreen(
+                appointmentId: doc.id,
+              ),
+            ),
           );
         },
       ),

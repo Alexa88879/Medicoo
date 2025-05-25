@@ -14,6 +14,7 @@ import 'records_list_screen.dart';
 import 'book_lab_test_screen.dart';
 import 'medical_voice_assistant.dart';
 import 'all_appointments_screen.dart';
+import 'appointment_detail_screen.dart';
 
 // Helper icon widgets (ensure these asset paths are correct in your project)
 Widget _buildCompositeProfileIcon({
@@ -944,8 +945,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   status: status,
                   onTap: () {
                     if (mounted) {
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(SnackBar(content: Text('Tapped on ${doc.id} (View Details - Not Implemented)')));
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => AppointmentDetailScreen(
+                            appointmentId: doc.id,
+                          ),
+                        ),
+                      );
                     }
                   },
                 ),
