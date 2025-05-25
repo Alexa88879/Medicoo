@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'signup_screen.dart';
 import 'home_screen.dart'; // Used for navigation
 
@@ -16,7 +17,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _auth = FirebaseAuth.instance;
-  final _firestore = FirebaseFirestore.instance; // Instance of Firestore
+  final _firestore = FirebaseFirestore.instance;
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -54,32 +55,28 @@ class _LoginScreenState extends State<LoginScreen> {
       if (userCredential.user != null && mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          MaterialPageRoute(builder: (context) => HomeScreen(user: userCredential.user!)),
         );
       }
     } on FirebaseAuthException catch (e) {
       String message = 'Failed to login. Please check your credentials.';
-      if (e.code == 'user-not-found') {
-        message = 'No user found for that email.';
+      if (e.code == 'user-not-found' || e.code == 'INVALID_LOGIN_CREDENTIALS' || e.code == 'invalid-credential') {
+        message = 'Invalid credentials. Please check your email and password.';
       } else if (e.code == 'wrong-password') {
         message = 'Wrong password provided for that user.';
       } else if (e.code == 'invalid-email') {
         message = 'The email address is not valid.';
-      } else if (e.code == 'invalid-credential') {
-        message = 'Invalid credentials. Please check your email and password.';
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message)),
         );
       }
-      debugPrint(
-          'Firebase Auth Exception during login: ${e.code} - ${e.message}');
+      debugPrint('Firebase Auth Exception during login: ${e.code} - ${e.message}');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Something went wrong. Please try again.')),
+          const SnackBar(content: Text('Something went wrong. Please try again.')),
         );
       }
       debugPrint('Login Error: $e');
@@ -98,150 +95,121 @@ class _LoginScreenState extends State<LoginScreen> {
         _isLoading = true;
       });
     }
-    UserCredential? userCredential; 
+    UserCredential? userCredential; // Initialize as nullable
 
     try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
-        if (mounted) setState(() => _isLoading = false);
-        return;
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+        return; // User cancelled Google Sign-In
       }
 
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
       final AuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
       userCredential = await _auth.signInWithCredential(credential);
-      User? user = userCredential.user;
+      User? user = userCredential.user; // user is already nullable
 
-      if (user != null) {
+      if (user != null) { // Null check for user
         final userDocRef = _firestore.collection('users').doc(user.uid);
         final userDocSnapshot = await userDocRef.get();
 
         if (!userDocSnapshot.exists) {
-          debugPrint(
-              "New Google user: ${user.uid}. Creating document in 'users' collection...");
-          
+          debugPrint("New Google user: ${user.uid}. Creating document in 'users' collection...");
           String generatedPatientId = 'PATG${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-
           Map<String, dynamic> userData = {
-            'uid': user.uid, 
+            'uid': user.uid,
             'email': user.email,
-            'displayName': user.displayName, 
-            'photoURL': user.photoURL,       
+            'displayName': user.displayName,
+            'photoURL': user.photoURL,
             'providerId': 'google.com',
-            'createdAt': FieldValue.serverTimestamp(), // Rule expects request.time
-            'role': 'patient', // Ensures 'role' is present
-            'phoneNumber': user.phoneNumber, // Can be null, but key should be present
+            'createdAt': FieldValue.serverTimestamp(),
+            'role': 'patient',
+            'phoneNumber': user.phoneNumber,
             'age': null,
-            'bloodGroup': null, 
-            'patientId': generatedPatientId, 
-            'fcmToken': null,
-            // Add any other fields that your 'users' create rule's hasAll() expects, initializing to null if not available
+            'bloodGroup': null,
+            'patientId': generatedPatientId,
+            'fcmTokens': [],
           };
           debugPrint("Attempting to create user document (Google Sign-In): $userData");
           await userDocRef.set(userData);
-          debugPrint(
-              "User document created successfully in 'users' collection for Google user: ${user.uid}");
+          debugPrint("User document created successfully for Google user: ${user.uid}");
         } else {
-          debugPrint(
-              "Existing user profile for Google user: ${user.uid}. Checking for updates in 'users' collection.");
-          Map<String, dynamic> existingUserData =
-              userDocSnapshot.data() as Map<String, dynamic>;
+          debugPrint("Existing user profile for Google user: ${user.uid}. Checking for updates.");
           Map<String, dynamic> updates = {};
-
-          if (user.email != null && existingUserData['email'] != user.email) {
-            updates['email'] = user.email;
-          }
-          if (user.displayName != null &&
-              user.displayName!.isNotEmpty &&
-              existingUserData['displayName'] != user.displayName) {
+          Map<String, dynamic> existingData = userDocSnapshot.data()!;
+          if(user.displayName != null && existingData['displayName'] != user.displayName) {
             updates['displayName'] = user.displayName;
           }
-          if (user.photoURL != null && existingUserData['photoURL'] != user.photoURL) {
+          if(user.photoURL != null && existingData['photoURL'] != user.photoURL) {
             updates['photoURL'] = user.photoURL;
           }
-          if (existingUserData['phoneNumber'] != user.phoneNumber) {
-            updates['phoneNumber'] = user.phoneNumber;
-          }
-          // Ensure role is set if it's missing for older documents
-          if (existingUserData['role'] == null) {
+          if (existingData['role'] == null || existingData['role'] != 'patient') {
             updates['role'] = 'patient';
           }
-
-          if (updates.isNotEmpty) {
+          if (existingData['fcmTokens'] == null) {
+            updates['fcmTokens'] = [];
+          }
+          if(updates.isNotEmpty) {
+            updates['updatedAt'] = FieldValue.serverTimestamp();
             await userDocRef.update(updates);
-            debugPrint(
-                "Updated user profile for ${user.uid} in 'users' collection with: $updates");
+            debugPrint("Updated user profile for ${user.uid} with: $updates");
           }
         }
 
         if (mounted) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
+            MaterialPageRoute(builder: (context) => HomeScreen(user: user)), // Pass the non-null user
           );
+        }
+      } else {
+        // This case should ideally not be reached if signInWithCredential was successful
+        // but user object is null. Log it if it happens.
+        debugPrint("Google Sign-In was successful but User object is null.");
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Google Sign-In failed to retrieve user details.')));
         }
       }
     } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Google Sign-In Error: ${e.message}')),
-        );
+      String message = 'Google Sign-In Error. Please try again.';
+      if (e.code == 'account-exists-with-different-credential') {
+        message = 'An account already exists with the same email address but different sign-in credentials.';
+      } else if (e.code == 'operation-not-allowed') {
+        message = 'Google Sign-In is not enabled for this project.';
       }
-      debugPrint(
-          'FirebaseAuthException during Google Sign-In: ${e.code} - ${e.message}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      }
+      debugPrint('FirebaseAuthException during Google Sign-In: ${e.code} - ${e.message}');
     } on FirebaseException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(
-                  'Failed to save user data with Google: ${e.message}')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save user data with Google: ${e.message ?? "Unknown Firebase error"}')));
       }
-      debugPrint(
-          'FirebaseException during Firestore write (Google Sign-In): ${e.code} - ${e.message}. UID was: ${userCredential?.user?.uid}');
+      debugPrint('FirebaseException (Google Sign-In): ${e.code} - ${e.message}. UID: ${userCredential?.user?.uid}');
+      // ---- FIXED: Null check for userCredential and userCredential.user ----
       if (userCredential?.user != null) {
-        debugPrint(
-            "Attempting to delete orphaned Google auth user: ${userCredential!.user!.uid}");
-        await userCredential.user!.delete().then((_) {
-          debugPrint(
-              "Orphaned Google auth user ${userCredential!.user!.uid} deleted successfully.");
-        }).catchError((deleteError) {
-          debugPrint(
-              "Failed to delete orphaned Google auth user ${userCredential!.user!.uid}: $deleteError");
-        });
+        await userCredential!.user!.delete().catchError((err) => debugPrint("Failed to delete orphaned Google auth user: $err"));
       }
+      // ---- END FIX ----
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(
-                  'An unexpected error occurred with Google Sign-In: ${e.toString().split(']').last.trim()}')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('An unexpected error occurred with Google Sign-In: ${e.toString().split(']').last.trim()}')));
       }
-      debugPrint(
-          'Generic Google Sign-In Error: $e. UID was: ${userCredential?.user?.uid}');
+      debugPrint('Generic Google Sign-In Error: $e. UID: ${userCredential?.user?.uid}');
+      // ---- FIXED: Null check for userCredential and userCredential.user ----
       if (userCredential?.user != null) {
-        debugPrint(
-            "Attempting to delete orphaned Google auth user (due to generic error): ${userCredential!.user!.uid}");
-        await userCredential.user!.delete().then((_) {
-          debugPrint(
-              "Orphaned Google auth user ${userCredential!.user!.uid} deleted successfully (generic error case).");
-        }).catchError((deleteError) {
-          debugPrint(
-              "Failed to delete orphaned Google auth user ${userCredential!.user!.uid} (generic error case): $deleteError");
-        });
+        await userCredential!.user!.delete().catchError((err) => debugPrint("Failed to delete orphaned Google auth user (generic): $err"));
       }
-    } 
-    finally {
+      // ---- END FIX ----
+    } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -250,24 +218,18 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_emailController.text.trim().isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content:
-                Text('Please enter your email address to reset password.')),
+        const SnackBar(content: Text('Please enter your email address to reset password.')),
       );
       return;
     }
     if (mounted) {
-      setState(() {
-        _isLoading = true;
-      });
+      setState(() => _isLoading = true);
     }
     try {
       await _auth.sendPasswordResetEmail(email: _emailController.text.trim());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content:
-                  Text('Password reset email sent. Please check your inbox.')),
+          const SnackBar(content: Text('Password reset email sent. Please check your inbox.')),
         );
       }
     } on FirebaseAuthException catch (e) {
@@ -278,19 +240,17 @@ class _LoginScreenState extends State<LoginScreen> {
         message = "The email address is not valid.";
       }
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(message)));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Error sending password reset email.')));
+          const SnackBar(content: Text('Error sending password reset email.')),
+        );
       }
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -305,73 +265,75 @@ class _LoginScreenState extends State<LoginScreen> {
           return SingleChildScrollView(
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight( 
+              child: IntrinsicHeight(
                 child: Stack(
                   children: [
                     Container(
-                      height: screenHeight * 0.35, 
+                      height: screenHeight * 0.35,
                       width: double.infinity,
                       decoration: const BoxDecoration(
-                        color: Color(0xFF159393), 
+                        color: Color(0xFF159393),
                         image: DecorationImage(
-                          image: AssetImage('assets/images/logo.png'), 
-                          fit: BoxFit.contain, 
-                          opacity: 0.5, 
+                          image: AssetImage('assets/images/logo.png'),
+                          fit: BoxFit.contain,
+                          opacity: 0.5,
                         ),
                       ),
                     ),
                     Container(
-                      margin: EdgeInsets.only(top: screenHeight * 0.28), 
-                      padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 30), 
+                      margin: EdgeInsets.only(top: screenHeight * 0.28),
+                      padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 30),
                       decoration: const BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(40), 
+                          topLeft: Radius.circular(40),
                           topRight: Radius.circular(40),
                         ),
                         boxShadow: [
-                            BoxShadow(
-                              color: Colors.black12,
-                              blurRadius: 15,
-                              offset: Offset(0, -5),
-                            )
-                          ]
+                          BoxShadow(
+                            color: Colors.black12,
+                            blurRadius: 15,
+                            offset: Offset(0, -5),
+                          )
+                        ],
                       ),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center, 
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Text(
+                          Text(
                             'Login',
-                            style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Color(0xFF008080), fontFamily: 'Inter'),
+                            style: GoogleFonts.poppins(fontSize: 36, fontWeight: FontWeight.bold, color: const Color(0xFF008080)),
                           ),
-                          const SizedBox(height: 25), 
+                          const SizedBox(height: 25),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('User ID (Email)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF008080), fontFamily: 'Inter')),
+                              Text('User ID (Email)', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: const Color(0xFF008080))),
                               const SizedBox(height: 8),
                               TextField(
                                 controller: _emailController,
                                 keyboardType: TextInputType.emailAddress,
+                                style: GoogleFonts.poppins(),
                                 decoration: InputDecoration(
                                   hintText: 'Enter your email address',
-                                  hintStyle: const TextStyle(color: Colors.black54, fontSize: 14, fontWeight: FontWeight.w300), 
+                                  hintStyle: GoogleFonts.poppins(color: Colors.black54, fontSize: 14, fontWeight: FontWeight.w300),
                                   prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF008080)),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black26)), 
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black26)),
                                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black26)),
                                   focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF008080), width: 2)),
-                                  contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12), 
+                                  contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
                                 ),
                               ),
-                              const SizedBox(height: 18), 
-                              const Text('Password', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF008080), fontFamily: 'Inter')),
+                              const SizedBox(height: 18),
+                              Text('Password', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: const Color(0xFF008080))),
                               const SizedBox(height: 8),
                               TextField(
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
+                                style: GoogleFonts.poppins(),
                                 decoration: InputDecoration(
                                   hintText: 'Enter your password',
-                                  hintStyle: const TextStyle(color: Colors.black54, fontSize: 14, fontWeight: FontWeight.w300),
+                                  hintStyle: GoogleFonts.poppins(color: Colors.black54, fontSize: 14, fontWeight: FontWeight.w300),
                                   prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF008080)),
                                   suffixIcon: IconButton(
                                     icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: const Color(0xFF008080)),
@@ -388,10 +350,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                 alignment: Alignment.centerRight,
                                 child: TextButton(
                                   onPressed: _isLoading ? null : _forgotPassword,
-                                  child: const Text('Forgot Password?', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF008080), fontFamily: 'Inter')), 
+                                  child: Text('Forgot Password?', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: const Color(0xFF008080))),
                                 ),
                               ),
-                              const SizedBox(height: 20), 
+                              const SizedBox(height: 20),
                               SizedBox(
                                 width: double.infinity,
                                 height: 50,
@@ -400,42 +362,43 @@ class _LoginScreenState extends State<LoginScreen> {
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF008080),
                                     foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), 
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     padding: const EdgeInsets.symmetric(vertical: 12),
+                                    textStyle: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
                                   ),
                                   child: _isLoading
                                       ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3,))
-                                      : const Text('Login', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, fontFamily: 'Inter')), 
+                                      : const Text('Login'),
                                 ),
                               ),
-                              const SizedBox(height: 20), 
-                              const Row(
+                              const SizedBox(height: 20),
+                              Row(
                                 children: [
-                                  Expanded(child: Divider(color: Colors.black38)),
-                                  Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('OR', style: TextStyle(fontSize: 14, color: Colors.black54, fontFamily: 'Inter'))), 
-                                  Expanded(child: Divider(color: Colors.black38)),
+                                  const Expanded(child: Divider(color: Colors.black38)),
+                                  Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text('OR', style: GoogleFonts.poppins(fontSize: 14, color: Colors.black54))),
+                                  const Expanded(child: Divider(color: Colors.black38)),
                                 ],
                               ),
                               const SizedBox(height: 20),
                               SocialLoginButton(
                                 text: 'Login With Google',
-                                onPressed: _isLoading ? () {} : _signInWithGoogle, 
-                                icon: 'assets/icons/google.svg', 
+                                onPressed: _isLoading ? () {} : _signInWithGoogle,
+                                icon: 'assets/icons/google.svg',
                               ),
                               const SizedBox(height: 20),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Text("Don't have an account? ", style: TextStyle(fontFamily: 'Inter', color: Colors.black54, fontSize: 15)), 
+                                  Text("Don't have an account? ", style: GoogleFonts.poppins(color: Colors.black54, fontSize: 15)),
                                   TextButton(
                                     onPressed: _isLoading ? null : () {
                                       Navigator.push(context, MaterialPageRoute(builder: (context) => const SignUpScreen()));
                                     },
-                                    child: const Text('Sign Up', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF008080), fontFamily: 'Inter')), 
+                                    child: Text('Sign Up', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: const Color(0xFF008080))),
                                   ),
                                 ],
                               ),
-                               const SizedBox(height: 30), 
+                               const SizedBox(height: 30),
                             ],
                           ),
                         ],
@@ -472,16 +435,16 @@ class SocialLoginButton extends StatelessWidget {
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
           backgroundColor: Colors.white,
-          side: const BorderSide(color: Colors.black38), 
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), 
+          side: const BorderSide(color: Colors.black38),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           padding: const EdgeInsets.symmetric(vertical: 12),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SvgPicture.asset(icon, height: 22), 
+            SvgPicture.asset(icon, height: 22),
             const SizedBox(width: 12),
-            Text(text, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87, fontFamily: 'Inter')), 
+            Text(text, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87)),
           ],
         ),
       ),

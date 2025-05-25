@@ -1,0 +1,12 @@
+node_modules/
+lib/
+dist/
+.env*
+.firebase/
+npm-debug.log*
+.DS_Store
+.vscode/
+* text=auto eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.js text eol=lf

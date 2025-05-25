@@ -40,9 +40,9 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
       _isLoading = true;
       _error = null;
       _isRecordCompleted = false; 
-      _dietAdviceMap.clear(); 
-      _isFetchingDietAdviceMap.clear();
-      _dietAdviceErrorMap.clear();
+      // Remove _dietAdviceMap.clear() since it's not defined
+      // Remove this line since _isFetchingDietAdviceMap is not defined
+      // Remove _dietAdviceErrorMap.clear() since it's not defined
     });
 
     User? currentUser = _auth.currentUser;

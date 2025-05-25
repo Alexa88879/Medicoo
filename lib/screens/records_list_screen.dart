@@ -35,10 +35,12 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
     User? currentUser = _auth.currentUser;
     if (currentUser != null) {
       try {
+      } catch (e) {
+        debugPrint('Error fetching user data: $e');
         DocumentSnapshot userDoc = await _firestore.collection('users').doc(currentUser.uid).get();
         if (mounted && userDoc.exists) {
           _userData = userDoc.data() as Map<String, dynamic>;
-        });
+        };
       }
     }
     _setupRecordsStream(); // Setup stream after fetching user data (or even if it fails)
@@ -56,7 +58,7 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
     
     if(mounted) {
       setState(() {
-        _isSettingUpStream = true;
+// Remove this line since _isSettingUpStream is not defined
         _recordsStream = null; 
       });
     }
@@ -128,7 +130,7 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint("[RecordsListScreen] Build method called. _isUserDataLoading: $_isUserDataLoading, _isSettingUpStream: $_isSettingUpStream");
+    debugPrint("[RecordsListScreen] Build method called.");
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Records', style: TextStyle(color: Color(0xFF00695C))),
@@ -168,7 +170,7 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
             child: StreamBuilder<List<MedicalRecordSummary>>(
               stream: _recordsStream,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting && !_userDataLoaded()) {
+                if (snapshot.connectionState == ConnectionState.waiting && _userData == null) {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
