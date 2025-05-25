@@ -22,6 +22,7 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
 
   bool _isLoading = true;
   String? _error;
+  bool _isRecordCompleted = false; 
 
   DocumentSnapshot? _appointmentData;
   List<Prescription> _prescriptions = []; // Use the common Prescription model
@@ -38,6 +39,10 @@ class _RecordDetailScreenState extends State<RecordDetailScreen> {
     setState(() {
       _isLoading = true;
       _error = null;
+      _isRecordCompleted = false; 
+      _dietAdviceMap.clear(); 
+      _isFetchingDietAdviceMap.clear();
+      _dietAdviceErrorMap.clear();
     });
 
     User? currentUser = _auth.currentUser;

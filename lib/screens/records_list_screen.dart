@@ -18,53 +18,54 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   String _selectedFilter = 'Lifetime'; // Default filter
-  final List<String> _filterOptions = ['Lifetime', 'Last 6 Months', 'Last Year']; // Removed 'Custom Range' for now
+  final List<String> _filterOptions = ['Lifetime', 'Last 6 Months', 'Last Year', 'Custom Range']; // Example filters
 
   Stream<List<MedicalRecordSummary>>? _recordsStream;
   Map<String, dynamic>? _userData;
-  bool _isUserDataLoading = true;
 
 
   @override
   void initState() {
     super.initState();
+    debugPrint("[RecordsListScreen] initState called.");
     _fetchUserDataAndSetupStream();
   }
 
   Future<void> _fetchUserDataAndSetupStream() async {
-    if (!mounted) return;
-    setState(() => _isUserDataLoading = true);
-
     User? currentUser = _auth.currentUser;
     if (currentUser != null) {
       try {
         DocumentSnapshot userDoc = await _firestore.collection('users').doc(currentUser.uid).get();
         if (mounted && userDoc.exists) {
           _userData = userDoc.data() as Map<String, dynamic>;
-        }
-      } catch (e) {
-        debugPrint("Error fetching user data for records: $e");
-        // Handle error if needed, e.g., show a snackbar
+        });
       }
     }
-    if (mounted) {
-      setState(() => _isUserDataLoading = false);
-    }
-    _setupRecordsStream(); // Setup stream after fetching user data (or even if it fails/no user)
+    _setupRecordsStream(); // Setup stream after fetching user data (or even if it fails)
   }
 
 
   void _setupRecordsStream() {
     User? currentUser = _auth.currentUser;
+    debugPrint("[RecordsListScreen] _setupRecordsStream called. Filter: $_selectedFilter, User: ${currentUser?.uid}");
+
     if (currentUser == null) {
-      if (mounted) setState(() => _recordsStream = Stream.value([]));
+      setState(() => _recordsStream = Stream.value([])); // Empty stream if no user
       return;
+    }
+    
+    if(mounted) {
+      setState(() {
+        _isSettingUpStream = true;
+        _recordsStream = null; 
+      });
     }
 
     Query query = _firestore
         .collection('appointments')
-        .where('userId', isEqualTo: currentUser.uid) // Securely fetch for current user
-        .orderBy('dateTimeFull', descending: true);
+        .where('userId', isEqualTo: currentUser.uid)
+        // .where('status', whereIn: ['completed', 'cancelled']) // Consider only completed/cancelled appointments as "records"
+        .orderBy('dateTimeFull', descending: true); // Most recent first
 
     DateTime now = DateTime.now();
     switch (_selectedFilter) {
@@ -76,59 +77,64 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
         break;
       case 'Lifetime':
       default:
-        // No additional date filter
+        // No additional date filter for lifetime
         break;
     }
+    // TODO: Implement 'Custom Range' filter with date pickers
 
-    if (mounted) {
-      setState(() {
-        _recordsStream = query.snapshots().map((snapshot) {
-          return snapshot.docs.map((doc) {
-            Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-            Timestamp eventTimestamp = data['dateTimeFull'] ?? Timestamp.now();
-            DateTime eventDate = eventTimestamp.toDate();
-            
-            String patientAgeAtEventStr = "N/A";
-            if (_userData != null && _userData!['age'] != null) {
-               patientAgeAtEventStr = _userData!['age'].toString();
-            }
-            // For more accurate age at event, you'd need user's DOB
-            // and calculate age based on eventDate and DOB.
+    setState(() {
+      _recordsStream = query.snapshots().map((snapshot) {
+        return snapshot.docs.map((doc) {
+          Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+          Timestamp eventTimestamp = data['dateTimeFull'] ?? Timestamp.now();
+          DateTime eventDate = eventTimestamp.toDate();
+          
+          String patientAgeAtEventStr = "N/A";
+          if (_userData != null && _userData!['age'] != null) { // Using current age for simplicity
+             patientAgeAtEventStr = _userData!['age'].toString();
+          }
+          // For more accuracy, if you store user's DOB:
+          // if (_userData != null && _userData!['birthDate'] is Timestamp) {
+          //   DateTime birthDate = (_userData!['birthDate'] as Timestamp).toDate();
+          //   int age = eventDate.year - birthDate.year;
+          //   if (eventDate.month < birthDate.month || (eventDate.month == birthDate.month && eventDate.day < birthDate.day)) {
+          //     age--;
+          //   }
+          //  patientAgeAtEventStr = age.toString();
+          // }
 
-            return MedicalRecordSummary(
-              id: doc.id, // This is the appointmentId
-              diseaseOrCategory: data['category'] ?? data['doctorSpeciality'] ?? 'N/A',
-              year: DateFormat('yyyy').format(eventDate),
-              period: DateFormat('dd MMM, yyyy').format(eventDate), // Using full date for period
-              patientAgeAtEvent: patientAgeAtEventStr,
-              eventTimestamp: eventTimestamp,
-            );
-          }).toList();
-        });
+
+          return MedicalRecordSummary(
+            id: doc.id,
+            diseaseOrCategory: data['category'] ?? data['doctorSpeciality'] ?? 'N/A',
+            year: DateFormat('yyyy').format(eventDate),
+            period: DateFormat('dd MMM, yyyy').format(eventDate),
+            patientAgeAtEvent: patientAgeAtEventStr,
+            eventTimestamp: eventTimestamp,
+          );
+        }).toList();
       });
-    }
+    });
   }
   
   void _onFilterChanged(String? newFilter) {
     if (newFilter != null && newFilter != _selectedFilter) {
-      if (mounted) {
-        setState(() {
-          _selectedFilter = newFilter;
-        });
-      }
-      _setupRecordsStream();
+      setState(() {
+        _selectedFilter = newFilter;
+      });
+      _setupRecordsStream(); // Re-fetch/re-filter data
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
+    debugPrint("[RecordsListScreen] Build method called. _isUserDataLoading: $_isUserDataLoading, _isSettingUpStream: $_isSettingUpStream");
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Records', style: TextStyle(color: Color(0xFF00695C))),
         backgroundColor: Colors.white,
         elevation: 1.0,
-        automaticallyImplyLeading: false,
+        automaticallyImplyLeading: false, // No back button as it's a tab
       ),
       body: Column(
         children: [
@@ -162,17 +168,14 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
             child: StreamBuilder<List<MedicalRecordSummary>>(
               stream: _recordsStream,
               builder: (context, snapshot) {
-                if ((snapshot.connectionState == ConnectionState.waiting && _recordsStream == null) || _isUserDataLoading) {
-                  return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF008080))));
+                if (snapshot.connectionState == ConnectionState.waiting && !_userDataLoaded()) {
+                  return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
                   return Center(child: Text('Error: ${snapshot.error}'));
                 }
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Text('No records found for the selected filter.', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: Colors.grey)),
-                  ));
+                  return const Center(child: Text('No records found.'));
                 }
 
                 List<MedicalRecordSummary> records = snapshot.data!;
@@ -186,7 +189,7 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
                       elevation: 2.0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
                       child: Padding(
-                        padding: const EdgeInsets.all(16.0),
+                        padding: const EdgeInsets.all(12.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -195,29 +198,26 @@ class _RecordsListScreenState extends State<RecordsListScreen> {
                               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF00695C)),
                             ),
                             const SizedBox(height: 8),
-                            _buildRecordInfoRow('Date:', record.period), // Period is now the full date
                             _buildRecordInfoRow('Year:', record.year),
-                            _buildRecordInfoRow('Patient Age (at event):', record.patientAgeAtEvent ?? 'N/A'),
-                            const SizedBox(height: 10),
+                            _buildRecordInfoRow('Period:', record.period),
+                            _buildRecordInfoRow('Age:', record.patientAgeAtEvent ?? 'N/A'),
+                            const SizedBox(height: 8),
                             Align(
                               alignment: Alignment.centerRight,
-                              child: ElevatedButton.icon(
-                                icon: const Icon(Icons.arrow_forward, size: 16),
-                                label: const Text('View Details'),
+                              child: ElevatedButton(
                                 onPressed: () {
-                                  Navigator.of(context).push(MaterialPageRoute(
+                                  Navigator.of(context).push(MaterialPageRoute( // Use context from builder
                                     builder: (context) => RecordDetailScreen(recordId: record.id),
                                   ));
                                 },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Theme.of(context).primaryColor,
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8)
-                                  ),
-                                  textStyle: const TextStyle(fontSize: 14)
+                                  )
                                 ),
+                                child: const Text('More'),
                               ),
                             ),
                           ],
