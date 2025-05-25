@@ -1,7 +1,7 @@
 // functions/family_request_notifications.js
 // const admin = require("firebase-admin");
 const {sendNotification}= require("./notifications");
-const onFamilyRequestCreateHandler = async (snapshot, context) =>{
+const onFamilyRequestCreateHandler = async (snapshot, context) => {
   const requestData = snapshot.data();
   const requestId = context.params.requestId;
 
@@ -10,27 +10,35 @@ const onFamilyRequestCreateHandler = async (snapshot, context) =>{
     return null;
   }
 
-  const recipientId = requestData.recipientId; // User receiving the request
-  const senderName = requestData.senderName || "Someone"; // Name of user sending request
+  // Update these field names to match your Firestore document
+  const receiverId = requestData.receiverId; // Changed from recipientId
+  const requesterName = requestData.requesterName || "Someone"; // Changed from senderName
 
-  if (!recipientId) {
-    console.error("Recipient ID missing in family request.");
+  if (!receiverId) {
+    console.error("Receiver ID missing in family request.");
     return null;
   }
 
-  /** @type {import('./notifications').NotificationPayload} */
+  // Add debug logging
+  console.log(`Processing family request notification: ${requestId}`);
+  console.log("Request data:", requestData);
+
   const payload = {
-    userId: recipientId,
+    userId: receiverId,
     title: "Family Member Request",
-    body: `${senderName} has sent you a family member request.`,
+    body: `${requesterName} has sent you a family member request.`,
     type: "FAMILY_REQUEST_RECEIVED",
     relatedDocId: requestId,
     relatedCollection: "familyRequests",
     data: {screen: "/familyRequests", id: requestId},
   };
 
-  await sendNotification(payload);
-  return null;
+  try {
+    await sendNotification(payload);
+    console.log(`Notification sent successfully for request ${requestId}`);
+  } catch (error) {
+    console.error(`Error sending notification for request ${requestId}:`, error);
+  }
 };
 
 // You might also want an onUpdate for familyRequests if you want to notify

@@ -113,7 +113,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           // ---- THIS IS THE FIX: Pass the newly created user object to HomeScreen ----
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => HomeScreen(user: newUser)),
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
           );
           // ---- END FIX ----
         }

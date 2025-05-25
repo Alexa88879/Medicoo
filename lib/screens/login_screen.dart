@@ -55,7 +55,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (userCredential.user != null && mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => HomeScreen(user: userCredential.user!)),
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
         );
       }
     } on FirebaseAuthException catch (e) {
@@ -165,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen> {
         if (mounted) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => HomeScreen(user: user)), // Pass the non-null user
+            MaterialPageRoute(builder: (context) => const HomeScreen()), // Remove user parameter since it's not defined
           );
         }
       } else {

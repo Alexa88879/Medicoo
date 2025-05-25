@@ -19,126 +19,71 @@ const messaging = admin.messaging();
  * @return {Promise<void>} A promise that resolves when the operation is complete.
  */
 async function sendNotification(payload) {
-  const {
-    userId,
-    title,
-    body,
-    type,
-    relatedDocId,
-    relatedCollection,
-    data, // This is the custom data for client-side navigation
-  } = payload;
+  const {userId, title, body, type, relatedDocId, relatedCollection, data} = payload;
+
+  console.log(`Attempting to send notification to user ${userId}`);
+  console.log("Notification payload:", payload);
 
   try {
-    const userDocRef = db.collection("users").doc(userId);
-    const userDoc = await userDocRef.get();
-
-    if (!userDoc.exists) {
-      console.error(`User ${userId} not found. Cannot send notification.`);
-      return;
-    }
+    // Get the user's FCM tokens
+    const userDoc = await db.collection("users").doc(userId).get();
     const userData = userDoc.data();
     const fcmTokens = userData?.fcmTokens || [];
 
-    if (!Array.isArray(fcmTokens) || fcmTokens.length === 0) {
-      console.log(`User ${userId} has no valid FCM tokens. Notification not sent.`);
+    if (!fcmTokens.length) {
+      console.error(`No FCM tokens found for user ${userId}`);
       return;
     }
 
-    // Filter out any non-string or empty tokens just in case
-    const validTokens = fcmTokens.filter((token) => typeof token === "string" && token.length > 0);
+    console.log(`Found ${fcmTokens.length} FCM tokens for user ${userId}`);
 
-    if (validTokens.length === 0) {
-      console.log(`User ${userId} has no valid FCM tokens after filtering. Notification not sent.`);
-      return;
-    }
-
-    const fcmMessage = {
-      tokens: validTokens, // Use filtered valid tokens
-      notification: { // This is what the user sees when the app is in background/terminated
-        title: title,
-        body: body,
-      },
-      data: { // This payload is received by the app for custom handling
-        type: type,
-        click_action: "FLUTTER_NOTIFICATION_CLICK", // Important for Android to open app on tap
-        relatedDocId: relatedDocId || "",
-        relatedCollection: relatedCollection || "",
-        // Spread the custom data from payload.data here
-        // This ensures `screen` and `id` from payload.data are included
-        ...(data || {}),
-      },
-      android: {
-        priority: "high",
+    // Send to all tokens
+    const sendPromises = fcmTokens.map((fcmToken) => {
+      const message = {
+        token: fcmToken,
         notification: {
-          sound: "default",
-          // channel_id: "curelink_high_importance_channel", // Optional: if you want FCM to use a specific channel
+          title,
+          body,
         },
-      },
-      apns: {
-        payload: {
-          aps: {
-            sound: "default",
-            badge: 1, // Example: sets badge number
-            // "content-available": 1, // For silent notifications if needed
-          },
+        data: {
+          type,
+          ...(relatedDocId && {docId: relatedDocId}),
+          ...(relatedCollection && {collection: relatedCollection}),
+          ...(data && {...data}),
         },
-      },
-    };
-
-    const fcmResponse = await messaging.sendMulticast(fcmMessage);
-    console.log(`FCM messages sent: ${fcmResponse.successCount} / ${validTokens.length}`);
-
-    const tokensToRemove = [];
-    if (fcmResponse.failureCount > 0) {
-      fcmResponse.responses.forEach((resp, idx) => {
-        if (!resp.success) {
-          const errorCode = resp.error?.code; // Use optional chaining
-          console.error(
-            `FCM error for token ${validTokens[idx]}: ${errorCode} - ${resp.error?.message}`,
-          );
-          // Standard FCM error codes for invalid/unregistered tokens
-          if (errorCode === "messaging/registration-token-not-registered" ||
-              errorCode === "messaging/invalid-registration-token") {
-            tokensToRemove.push(validTokens[idx]);
+      };
+      return messaging.send(message)
+        .catch((error) => {
+          if (error.code === "messaging/registration-token-not-registered") {
+            // Token is invalid, remove it from the user's tokens
+            return db.collection("users").doc(userId).update({
+              fcmTokens: admin.firestore.FieldValue.arrayRemove(fcmToken),
+            });
           }
-        }
-      });
-    }
-
-    // Remove invalid tokens from Firestore
-    if (tokensToRemove.length > 0) {
-      console.log("Removing invalid FCM tokens:", tokensToRemove);
-      await userDocRef.update({
-        fcmTokens: admin.firestore.FieldValue.arrayRemove(...tokensToRemove),
-      });
-    }
-
-    // Store notification record in Firestore
-    const notificationId = db.collection("notifications").doc().id;
-    await db.collection("notifications").doc(notificationId).set({
-      notificationId: notificationId,
-      userId: userId,
-      title: title,
-      body: body,
-      type: type,
-      relatedDocId: relatedDocId || null,
-      relatedCollection: relatedCollection || null,
-      scheduledTime: type.includes("REMINDER") ?
-        admin.firestore.Timestamp.now() : null, // Or actual scheduled time if passed
-      sentTime: admin.firestore.Timestamp.now(),
-      createdAt: admin.firestore.Timestamp.now(),
-      isRead: false,
-      data: data || null, // Store the custom data payload for in-app navigation
+          throw error;
+        });
     });
-    console.log(`Notification record ${notificationId} stored for user ${userId}.`);
+
+    const responses = await Promise.all(sendPromises);
+    console.log("Successfully sent messages:", responses);
+
+    // Store the notification in Firestore
+    await db.collection("users").doc(userId)
+      .collection("notifications")
+      .add({
+        title,
+        body,
+        type,
+        relatedDocId,
+        relatedCollection,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        isRead: false,
+      });
+
+    console.log("Notification stored in Firestore");
   } catch (error) {
-    console.error("General error in sendNotification function:", error);
-    if (error instanceof functions.https.HttpsError) {
-      throw error; // Re-throw HttpsError for callable functions
-    }
-    // For other types of functions (Firestore triggers, Pub/Sub),
-    // throwing might cause retries. Log carefully.
+    console.error("Error sending notification:", error);
+    throw error;
   }
 }
 

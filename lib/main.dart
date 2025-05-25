@@ -25,39 +25,25 @@ import 'notification_center_screen.dart'; // You'll create this file
 // ---- ADD THIS TOP-LEVEL FUNCTION for background message handling ----
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // If you're going to use other Firebase services in the background, such as Firestore,
-  // make sure you call `initializeApp` before using other Firebase services.
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   print("Handling a background message: ${message.messageId}");
-  print('Message data: ${message.data}'); // For debugging
-  if (message.notification != null) {
-    print('Message also contained a notification: ${message.notification?.title}');
-  }
-  // Optional: If you want to show a local notification for data-only background messages
-  // or customize the display of all background messages via flutter_local_notifications.
-  // Be cautious if FCM also shows a system notification to avoid duplicates.
-  // await NotificationService().init(); // Ensure initialized if called from isolate
-  // NotificationService().showNotification(message);
+  print('Message data: ${message.data}');
+  
+  // Uncomment these lines
+  await NotificationService().init();
+  await NotificationService().showNotification(message);
 }
 // ---- END ADDITION ----
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  // ---- ADD THESE LINES to initialize NotificationService and set background handler ----
-  await NotificationService().init(); // Initialize your notification service
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler); // Set background handler
-  // ---- END ADDITIONS ----
-
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-    ),
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  
+  // Initialize notification service
+  await NotificationService().init();
+  
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  
   runApp(const MyApp());
 }
 
@@ -140,7 +126,7 @@ class MyApp extends StatelessWidget {
           }
           if (snapshot.hasData && snapshot.data != null) {
             // ---- MODIFY THIS LINE: Pass the authenticated User object to HomeScreen ----
-            return HomeScreen(user: snapshot.data!);
+            return const HomeScreen();
           }
           // User is not logged in
           return const LoginScreen();
